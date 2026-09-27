@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from . import settings
-from .drive import DriveConfig, DriveOutput, SpeedController, bike_speed_from_power, trigger_value
+from .drive import DriveConfig, DriveOutput, SpeedController, VirtualBike, bike_speed_from_power, trigger_value
 from .ftms import MalformedPacket, parse_indoor_bike_data, run_reader
 from .limiter import LimitConfig, SpeedLimitPlanner, WheelActuator, display_to_kmh
 from .mapper import MapperConfig, ThrottleMapper
@@ -29,9 +29,11 @@ def parse_args(argv=None) -> argparse.Namespace:
                     help="limit: set the game's speed limit to the target and let the game hold it "
                          "(default; needs in-game speed control ON in limit mode); "
                          "speed: open-loop model with throttle+brake; power: legacy watts->throttle")
-    ap.add_argument("--speed-source", choices=["trainer", "power"], default="trainer",
-                    help="trainer: KICKR flywheel speed (gear x cadence); power: road-bike physics from watts")
-    ap.add_argument("--rider-kg", type=float, default=85.0, help="rider + bike mass for --speed-source power")
+    ap.add_argument("--speed-source", choices=["virtual", "trainer", "power"], default="virtual",
+                    help="virtual: simulated road bike stepped at 20 Hz from power (smooth, default); "
+                         "trainer: KICKR flywheel speed (gear x cadence, 1 Hz steps); "
+                         "power: steady-state road-bike speed from smoothed watts")
+    ap.add_argument("--rider-kg", type=float, default=85.0, help="rider + bike mass for virtual/power")
     lg = ap.add_argument_group("limit mode")
     lg.add_argument("--units", choices=["mph", "km/h"], default=lc.units, help="the game's speed units")
     lg.add_argument("--drive-throttle", type=float, default=lc.drive_throttle,
@@ -45,7 +47,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--sim", metavar="PROFILE",
                     help='test without the bike: "seconds:bike_kmh,..." e.g. "0:0,5:15,40:15,55:0"')
     g = ap.add_argument_group("speed mode (defaults come from settings.json when present)")
-    g.add_argument("--gear", type=float, default=d.gear_ratio, help="car km/h per bike km/h")
+    g.add_argument("--gear", type=float, default=None,
+                   help="car km/h per bike km/h (default 2.0 for virtual/power speed, 3.0 for trainer)")
     g.add_argument("--accel", type=float, default=d.accel_kmh_s, help="car km/h/s at full throttle (calibrate)")
     g.add_argument("--coast", type=float, default=d.coast_kmh_s, help="constant drag, km/h/s (calibrate)")
     g.add_argument("--drag-quad", type=float, default=d.drag_quad, help="speed-squared drag (calibrate)")
@@ -65,13 +68,19 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--name", default="KICKR", help="device name fallback if FTMS UUID is not advertised")
     ap.add_argument("--log-dir", type=Path, default=LOG_DIR)
     ap.add_argument("--verbose", action="store_true", help="echo the event log to the console")
-    return ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    if args.gear is None:
+        args.gear = d.gear_ratio if args.speed_source == "trainer" else 2.0
+    return args
 
 
 def drive_config(args: argparse.Namespace) -> DriveConfig:
+    # In limit mode the game owns top speed. Ride 12:23 hit an 88.8 km/h target ceiling (0.95 x the
+    # speed-mode calibration's 93.5) during an 865 W sprint, capping the limit at 55 mph.
+    top = 0.0 if args.mode == "limit" else args.top_speed
     return DriveConfig(
         gear_ratio=args.gear, accel_kmh_s=args.accel, coast_kmh_s=args.coast,
-        drag_quad=args.drag_quad, brake_kmh_s=args.brake_rate, top_speed_kmh=args.top_speed,
+        drag_quad=args.drag_quad, brake_kmh_s=args.brake_rate, top_speed_kmh=top,
         max_throttle=args.max_throttle, max_brake=args.max_brake, throttle_ramp_up=args.ramp,
     )
 
@@ -92,6 +101,7 @@ async def run(args: argparse.Namespace) -> None:
         coast_hold_s=args.coast_hold, coast_margin=args.coast_margin))
     actuator = WheelActuator(dry_run=args.dry_run)
     pad = NullPad() if args.dry_run else VirtualPad()
+    vbike = VirtualBike(mass_kg=args.rider_kg)
     state = {"conn": "starting", "power": None, "cadence": None,
              "out": DriveOutput(0.0, 0.0, 0.0, 0.0), "limit": None}
     log.info("start dry_run=%s mode=%s speed_source=%s units=%s deadzone=%.2f drive=%s limit=%s mapper=%s sim=%s",
@@ -120,7 +130,14 @@ async def run(args: argparse.Namespace) -> None:
             return
         if bike.power_w is not None:
             mapper.add_sample(bike.power_w, now)
-        if args.speed_source == "power":
+        # Power for the virtual bike. The KICKR sometimes reports 0 W mid-stroke with cadence still
+        # high (ride 11:39 t=135 s: 0 W at 82 rpm); reuse the last real reading then.
+        if bike.power_w is not None:
+            if bike.power_w > 0 or (bike.cadence_rpm or 0) < 20:
+                state["drive_w"] = bike.power_w
+        if args.speed_source == "virtual":
+            pass  # stepped at 20 Hz in output_loop
+        elif args.speed_source == "power":
             controller.set_bike_speed(bike_speed_from_power(mapper.smoothed, mass_kg=args.rider_kg))
         elif bike.speed_kmh is not None:
             controller.set_bike_speed(bike.speed_kmh)
@@ -133,6 +150,8 @@ async def run(args: argparse.Namespace) -> None:
         while True:
             now = time.monotonic()
             active = not mapper.is_stale(now)
+            if args.speed_source == "virtual":
+                controller.set_bike_speed(vbike.step(state.get("drive_w", 0) if active else 0.0, now - last))
             if args.mode == "limit":
                 target = controller.step(now - last, active).target_kmh
                 pedalling = planner.is_pedalling(state["power"], state["cadence"])
@@ -162,7 +181,7 @@ async def run(args: argparse.Namespace) -> None:
             if conn == "connected" and mapper.is_stale(now):
                 conn = "no data"
             if args.mode == "limit" and not actuator.game_focused():
-                conn += " (game not focused)"
+                conn = "NO GAME FOCUS"
             elif args.mode == "limit" and state.get("plan") in ("coasting", "releasing"):
                 conn = state["plan"]
             line = format_status(now - ride.start, conn, state["power"], state["cadence"],

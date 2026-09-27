@@ -41,6 +41,9 @@ Results in docs/RESEARCH.md §8.
 **Coast hold (default, 2026-09-27):** not pedalling (<25 W and <20 rpm) freezes the limit +5 mph with
 throttle 0.05 for 12 s, then releases (throttle 0, -5 mph / 2 s). In-game: descent 48 -> 56 km/h
 instead of 48 -> 24. `--coast-hold 0` = old following. docs/RESEARCH.md §10.
+**Speed source (default virtual, 2026-09-27):** every KICKR Bluetooth channel incl. Zwift protocol is 1.00 Hz
+(measured); no ANT+ stick present. bridge/drive.py VirtualBike integrates power at 20 Hz (gear 2.0 default for it).
+Limit mode no longer caps target at speed-mode top speed. docs/RESEARCH.md section 11.
 The debug panel (F4) and tools/debugpanel.py are for TESTING ONLY (user: no debug screen while riding).
 Grade for tests = elevation (pos.y) vs distance integrated from panel speed.
 

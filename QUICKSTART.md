@@ -15,7 +15,7 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
      The bridge sets that number.
    - Gearbox **Automatic** (or an electric motor).
    - **Click into the game and leave it focused.** The game ignores the controller while another
-     window is in front, and the status line then shows `(game not focused)`.
+     window is in front, and the status line then shows `NO GAME FOCUS`.
    - Leave the speedometer (bottom right) uncovered so the recorder can read it.
 4. Ride. The bridge turns your speed into the game's speed limit (5 mph steps), and the game holds
    the car at that limit, uphill and down. **Stop pedalling and the car coasts** (status `coasting`):
@@ -43,12 +43,14 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 
 | Want | Option | Default |
 | --- | --- | --- |
-| Slower or faster car for the same pedalling | `--gear` (car km/h per bike km/h) | 3.0 |
-| Speed from effort (watts, road-bike physics) instead of flywheel speed | `--speed-source power` (and `--rider-kg`) | trainer |
+| Slower or faster car for the same pedalling | `--gear` (car km/h per bike km/h) | 2.0 (virtual), 3.0 (trainer) |
+| Where your speed comes from | `--speed-source virtual` (simulated bike from your watts, smooth, default), `trainer` (KICKR flywheel speed, steps once a second), `power` | virtual |
+| Your weight (virtual bike: heavier builds speed slower and coasts longer) | `--rider-kg` (rider + bike) | 85 |
 | Gentler or harder acceleration up to the limit | `--drive-throttle` | 0.6 |
 | Game set to km/h | `--units km/h` | mph |
 | Longer or shorter coast before easing to a stop | `--coast-hold` (seconds; 0 = old behaviour, no coasting) | 12 |
 | Coast slows too much / rolls on too long on the flat | `--coast-throttle` (higher = rolls further) | 0.05 |
+| Coast easing down faster or slower after the hold | (code: `release_step_s`, 4 s per 5 mph) | 4 |
 | More or less room to speed up downhill while coasting | `--coast-margin` (mph above your last speed) | 5 |
 | Test without the bike (scripted ride) | `--sim "0:0,5:15,40:15,55:0"` (seconds:bike km/h) | off |
 | Test without the game | `--dry-run` (reads the bike, sends nothing) | off |

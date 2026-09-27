@@ -47,7 +47,10 @@ class LimitConfig:
     coast_throttle: float = 0.05
     coast_margin: int = 5           # display units above the frozen limit, room to gain speed downhill
     coast_hold_s: float = 12.0      # then release: throttle 0, limit steps down to stop
-    release_step_s: float = 2.0     # one 5-unit step per this while releasing
+    # One 5-unit step per this while releasing, with the coast throttle kept until the last 10 units.
+    # 2 s with throttle 0 dropped the car 60 -> 18 km/h in 6 s in the 12:34 test (~7 km/h/s, harsh).
+    release_step_s: float = 4.0
+    release_throttle_floor: int = 10
 
 
 def kmh_to_display(kmh: float, units: str) -> float:
@@ -91,7 +94,8 @@ class SpeedLimitPlanner:
             steps = int((held - c.coast_hold_s) // c.release_step_s) + 1
             self.state = "releasing"
             self.desired = max(MIN_LIMIT, self.coast_limit - STEP * steps)
-            return self.desired, 0.0
+            thr = c.coast_throttle if self.desired > c.release_throttle_floor else 0.0
+            return self.desired, thr
         if pedalling:
             self.coast_since = None
         elif self.coast_since is not None:

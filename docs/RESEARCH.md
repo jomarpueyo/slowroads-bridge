@@ -233,6 +233,45 @@ gear N and no movement), and the first controller press after a game restart onl
 Both are in QUICKSTART troubleshooting. Windows OCR can hang indefinitely (the recorder froze for 15 min),
 so every OCR call now has a 2 s timeout.
 
+## 11. Faster updates: polling, Zwift channel, ANT+, virtual bike (2026-09-27 12:30–12:40)
+
+**Can the trainer report faster than once a second?** Measured on this KICKR CORE (`tools/probe_rates.py`,
+`tools/probe_zwift.py`):
+
+| Channel | Rate |
+| --- | --- |
+| FTMS Indoor Bike Data (0x2AD2) | 1.00 Hz |
+| Cycling Power (0x2A63) | 1.00 Hz |
+| Zwift trainer protocol (`…0002`, after the "RideOn" handshake; riding-data message 0x03: power, cadence, speed ×100) | **1.00 Hz** (20 messages in 20 s). The trainer answered `RideOn` + `02 02` and logged `gap_params_change(1): 48, 48, 0, 960` and `ATX 02, STX 02` |
+| ANT+ FE-C | Not testable: no ANT+ USB stick on this PC (no USB VID 0FCF). The ANT+ profile runs at 4 Hz, but Wahoo says the CORE broadcasts power at 1 Hz over ANT+. Worth one test if a stick is bought |
+| Race Mode (10 Hz) | KICKR CORE 2 over WiFi only (Wahoo) |
+
+The probe only sent the handshake: no resistance, gear or ERG commands.
+
+**Our own method: a virtual bike** (`bridge/drive.py: VirtualBike`, now the default `--speed-source virtual`).
+Like Zwift and GTBike V, the bridge simulates the rider between readings: speed is a physical state
+stepped at 20 Hz from the latest power, `m dv/dt = P/v − (Crr m g + ½ ρ CdA v²)` (85 kg, CdA 0.32,
+Crr 0.004). Speed then has inertia: no once-a-second steps, surges build, and coasting fades about
+0.7 km/h/s at 30 km/h. It reads faster than the KICKR's flywheel speed, so the default gear for it is 2.0
+(trainer source keeps 3.0). A 0 W packet with cadence ≥ 20 (a KICKR quirk) reuses the last real power.
+
+Replaying ride 12:23 offline (`compare_sources.py` in the session scratchpad):
+
+| | Trainer speed, gear 3 | Virtual bike, gear 2 |
+| --- | --- | --- |
+| Game-limit changes | 83 (17/min) | 44 (9/min) |
+| Target jumps > 0.5 km/h in one 20 Hz tick | 123 | 0 (max 0.3) |
+| 865 W sprint top target | 102 km/h | 83 km/h |
+
+In-game `--sim` run (12:34): limit 15 → 20 → 25 → 30 → 35 → 40 → 45 mph and the car held each; the displayed
+limit matched in 20/20 samples; both coasts were on descents and the car rolled 55 → 64 and up to 80 km/h.
+
+**Other changes from ride 12:23:**
+- Limit mode no longer caps the target at the speed-mode calibration (0.95 × 93.5 km/h); the sprint was held at 55 mph.
+- The coast release was softened. It was throttle 0 and −5 mph every 2 s (60 → 18 km/h in 6 s); now it keeps the 0.05 coast throttle and steps every 4 s, so 64 → 0 km/h takes about 21 s (12:40 test).
+- The status line is shortened to under 80 columns (it wrapped in the ride.bat console).
+- At 12:28:12 the game showed a LOADING screen (a reset). Afterwards the game limit (25) differed from the bridge's count (30) until the next stop re-synced it.
+
 ## Sources
 
 - [Steam store: Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/) · [Steam community announcements](https://steamcommunity.com/app/3431300) · [Slow Roads controls (third-party)](https://slowxroads.com/blog/slow-roads-controls/)

@@ -96,10 +96,10 @@ def test_coast_hold_freezes_limit_with_margin_and_coast_throttle():
 
 
 def test_coast_releases_gently_then_stays_stopped():
-    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12, coast_margin=5, release_step_s=2))
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12, coast_margin=5, release_step_s=2, coast_throttle=0.0))
     p.update(mph(40), True, True, 0.0)
     p.update(mph(40), True, False, 0.0)                       # coast from 45
-    assert p.update(mph(10), True, False, 12.0) == (40, 0.0)  # first release step
+    assert p.update(mph(10), True, False, 12.0) == (40, 0.0)  # first release step (test sets 2 s steps, coast thr 0)
     assert p.update(mph(10), True, False, 14.0) == (35, 0.0)
     assert p.update(mph(10), True, False, 30.0) == (MIN_LIMIT, 0.0)
     # flywheel still turning but no pedalling: must not go back to drive throttle
@@ -135,3 +135,43 @@ def test_coast_hold_zero_restores_old_following():
     p.update(mph(40), True, True, 0.0)
     assert p.update(mph(30), True, False, 1.0) == (30, 0.6)   # follows the target, no freeze
     assert p.state == "riding"
+
+
+def test_virtual_bike_steady_state_matches_physics():
+    from bridge.drive import VirtualBike
+    vb = VirtualBike()
+    for _ in range(20 * 120):          # 2 min at 20 Hz, 200 W
+        vb.step(200, 0.05)
+    assert vb.kmh == pytest.approx(bike_speed_from_power(200), abs=0.5)
+
+
+def test_virtual_bike_is_smooth_between_1hz_readings():
+    from bridge.drive import VirtualBike
+    vb = VirtualBike()
+    for _ in range(20 * 60):
+        vb.step(100, 0.05)
+    speeds = [vb.step(300, 0.05) for _ in range(20)]   # power jumps 100 -> 300 W for one second
+    steps = [b - a for a, b in zip(speeds, speeds[1:])]
+    assert all(0 < s < 0.2 for s in steps)               # rises a little every tick, never a jump
+
+
+def test_virtual_bike_coasts_gently():
+    from bridge.drive import VirtualBike
+    vb = VirtualBike()
+    for _ in range(20 * 120):
+        vb.step(150, 0.05)
+    v0 = vb.kmh
+    for _ in range(20):
+        vb.step(0, 0.05)
+    assert 0.3 < v0 - vb.kmh < 1.5                       # ~0.7-1 km/h lost in the first second
+
+
+def test_release_keeps_coast_throttle_until_low_and_steps_every_4s_by_default():
+    p = SpeedLimitPlanner()
+    p.update(mph(40), True, True, 0.0)
+    p.update(mph(40), True, False, 0.0)                       # coast from 45
+    assert p.update(0, True, False, 12.0) == (40, 0.05)
+    assert p.update(0, True, False, 15.9) == (40, 0.05)       # still the first step
+    assert p.update(0, True, False, 16.0) == (35, 0.05)
+    assert p.update(0, True, False, 32.0) == (15, 0.05)
+    assert p.update(0, True, False, 36.0) == (10, 0.0)        # last 10 mph: throttle off to stop

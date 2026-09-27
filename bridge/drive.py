@@ -69,6 +69,41 @@ def bike_speed_from_power(watts: float, mass_kg: float = 85.0, cda: float = 0.32
     return lo * 3.6
 
 
+class VirtualBike:
+    """A simulated road bike stepped at the output rate (20 Hz) from the latest power reading.
+
+    The KICKR reports once a second on every Bluetooth channel (FTMS, Cycling Power and Zwift's
+    protocol all measured at 1.00 Hz, 2026-09-27), so readings can't come faster. Zwift and GTBike V
+    get smooth motion from the same 1 Hz data by simulating the rider between readings: speed has
+    inertia, so it moves continuously instead of stepping each second, surges build up, and coasting
+    fades gently (about 0.7 km/h/s at 30 km/h on the flat).
+        m dv/dt = P/v - (Crr m g + 0.5 rho CdA v^2)
+    """
+
+    def __init__(self, mass_kg: float = 85.0, cda: float = 0.32, crr: float = 0.004,
+                 rho: float = 1.225, eta: float = 0.97) -> None:
+        self.m, self.cda, self.crr, self.rho, self.eta = mass_kg, cda, crr, rho, eta
+        self.v = 0.0  # m/s
+
+    @property
+    def kmh(self) -> float:
+        return self.v * 3.6
+
+    def step(self, watts: float, dt: float) -> float:
+        if dt <= 0:
+            return self.kmh
+        # Integrate in small sub-steps so a large dt (a stalled loop) stays stable.
+        n = max(1, int(dt / 0.02))
+        h = dt / n
+        for _ in range(n):
+            drive = self.eta * max(watts, 0.0) / max(self.v, 1.0)  # force; capped at low speed
+            resist = self.crr * self.m * 9.81 + 0.5 * self.rho * self.cda * self.v * self.v
+            self.v = max(self.v + (drive - resist) / self.m * h, 0.0)
+            if self.v < 0.05 and watts <= 0:
+                self.v = 0.0
+        return self.kmh
+
+
 def car_accel(v_kmh: float, throttle: float, brake: float, c: DriveConfig) -> float:
     """Car model, km/h per second. Shared by the controller and tools/calibrate_car.py.
     Calibration 2026-09-27 09:20 (automatic): coasting shed ~23 km/h/s near 90 km/h but under
