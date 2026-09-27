@@ -47,11 +47,44 @@ through second by second.
 ## Requirements
 
 - Windows 10/11 with Bluetooth LE
-- Wahoo KICKR CORE (other FTMS trainers will probably work but are untested)
+- A smart trainer with Bluetooth FTMS: tested on a Wahoo KICKR CORE; see [Trainer compatibility](#trainer-compatibility)
 - Slow Roads (Steam) with a keyboard/mouse. No real controller plugged in while riding
 - Installed by the setup script: Python 3.13, Git, [ViGEmBus](https://github.com/nefarius/ViGEmBus) 1.22.0
   (virtual controller driver, final release), and Python packages from the hash-locked `requirements*.txt`
   (edit the `.in` files and re-lock with `pip-compile --generate-hashes`)
+
+## Trainer compatibility
+
+The bridge reads only the standard Bluetooth fitness-machine data (FTMS Indoor Bike Data), and from that
+only **power**. Nothing is Wahoo-specific: the parser handles any field layout the standard allows (fuzzed
+with 300 000 packets) and the virtual bike works at any update rate. So any trainer that implements FTMS
+correctly should work, but **only the Wahoo KICKR CORE has been tested**. Reports for other trainers are
+welcome.
+
+| Trainer | FTMS support (per sources below) | Expected to work |
+| --- | --- | --- |
+| Wahoo KICKR, KICKR CORE, CORE 2, SNAP, ROLLR | Yes (smart trainers from 2020 on) | **KICKR CORE tested**; others expected |
+| Tacx Flux / Flux S / Flux 2, NEO 1 / 2 / 2T / 3M, Vortex | Yes; older units and firmware don't | Expected, with current firmware |
+| Elite Suito, Direto, Justo, Drivo, Nero, Tuo, … | Yes; depends on manufacturing date | Expected on newer units |
+| Saris H2 / H3 | Yes | Expected |
+| Zwift Hub Classic / One | Yes | Expected |
+| JetBlack (2020 on) | Yes | Expected |
+| Van Rysel D100 / D500 / D900 (Decathlon) | Yes; cadence comes from a separate sensor | Expected: pedalling is detected from power alone |
+| Smart bikes (KICKR Bike, NEO Bike, …) | Most support FTMS | Probably; untested |
+| Older trainers without FTMS, ANT+-only units, a basic trainer with a separate power meter | No FTMS | **No.** Support for the Bluetooth Cycling Power service would cover these (not built yet) |
+
+Notes for other trainers:
+
+- **Pairing** looks for the FTMS service in the trainer's Bluetooth advertisement. If a trainer doesn't
+  advertise it, pair by name once: `ride.bat --trainer pair --name Suito` (use part of its Bluetooth name).
+- **Update rate:** most trainers send data once a second over Bluetooth. The virtual bike smooths this, so
+  faster or slower trainers work the same way.
+- **The game side** is independent of the trainer: Windows, Slow Roads, and mph by default
+  (`--units km/h` otherwise).
+
+Sources: [the5krunner: best smart trainer](https://the5krunner.com/best/best-cycling-products/best-smart-trainer/),
+[icTrainer: compatibility](https://ictrainer.de/en/compatibility/),
+[FulGaz: compatible trainers](https://support.fulgaz.com/hc/en-us/articles/14585827418637-Compatible-trainers-smart-trainers-and-smart-bikes-including-WAHOO-Tacx-and-Elite-trainers).
 
 ## Setup
 
