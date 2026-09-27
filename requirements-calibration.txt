@@ -1,0 +1,6 @@
+﻿# Calibration tools only (screen OCR of the speedometer). Not needed to ride.
+mss>=10
+pillow>=10
+winrt-Windows.Media.Ocr>=3.1
+winrt-Windows.Graphics.Imaging>=3.1
+winrt-Windows.Globalization>=3.1

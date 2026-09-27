@@ -1,0 +1,3 @@
+bleak>=0.22
+vgamepad>=0.1.0
+pytest>=8

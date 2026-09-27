@@ -1,0 +1,16 @@
+{
+  "ride": {
+    "accel": 53.75041,
+    "coast": 5.12673,
+    "drag_quad": 0.00271,
+    "brake_rate": 18.96526,
+    "top_speed": 93.5,
+    "deadzone": 0.0
+  },
+  "calibration": {
+    "source": "calibrate-20260927-092028.csv",
+    "rms_kmh": 8.31,
+    "delay_s": 0.0,
+    "saved": "2026-09-27 09:25:05"
+  }
+}
