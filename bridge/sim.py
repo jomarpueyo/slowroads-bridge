@@ -14,20 +14,35 @@ from typing import Callable
 log = logging.getLogger("bridge.sim")
 
 
-def parse_profile(text: str) -> list[tuple[float, float]]:
-    pts = sorted((float(t), float(v)) for t, v in (p.split(":") for p in text.split(",") if p.strip()))
+def parse_profile(text: str) -> list[tuple]:
+    """Points "t:kmh" or "t:kmh:watts". A watts value applies from that point until the next point
+    that gives one; 0 W = not pedalling (cadence 0), like coasting on the KICKR."""
+    pts = []
+    for p in text.split(","):
+        if p.strip():
+            f = [float(x) for x in p.split(":")]
+            pts.append((f[0], f[1], f[2] if len(f) > 2 else None))
     if not pts:
         raise ValueError("empty --sim profile")
-    return pts
+    return sorted(pts, key=lambda q: q[0])
 
 
 def speed_at(profile, t: float) -> float:
     if t <= profile[0][0]:
         return profile[0][1]
-    for (t0, v0), (t1, v1) in zip(profile, profile[1:]):
+    for a, b in zip(profile, profile[1:]):
+        (t0, v0), (t1, v1) = a[:2], b[:2]
         if t0 <= t <= t1:
             return v0 + (v1 - v0) * (t - t0) / (t1 - t0) if t1 > t0 else v1
     return profile[-1][1]
+
+
+def watts_at(profile, t: float):
+    w = None
+    for p in profile:
+        if p[0] <= t and p[2] is not None:
+            w = p[2]
+    return w
 
 
 def packet(speed_kmh: float, cadence_rpm: float, power_w: int) -> bytes:
@@ -47,7 +62,10 @@ async def run_sim(profile, on_packet: Callable[[bytes], None], on_state: Callabl
     while True:
         t = time.monotonic() - t0
         v = speed_at(profile, t)
-        on_packet(packet(v, 80.0 if v > 0.5 else 0.0, power_for(v)))
+        w = watts_at(profile, t)
+        if w is None:
+            w = power_for(v)
+        on_packet(packet(v, 80.0 if v > 0.5 and w > 0 else 0.0, int(w)))
         if t > end + 2:
             on_state("sim done")
             log.info("simulated profile finished")

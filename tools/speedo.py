@@ -97,5 +97,28 @@ class SpeedoReader:
         img = img if img is not None else self.grab()
         return parse_speed(await self._ocr(img))
 
-    def read(self, img=None) -> SpeedReading:
-        return asyncio.run(self.read_async(img))
+    def read(self, img=None, timeout: float = 2.0) -> SpeedReading:
+        """OCR with a timeout. Windows OCR occasionally never completes (ride 11:39: the recorder
+        froze 7 s in and stayed frozen for 15 min), so each call runs on a daemon thread; a timed-out
+        call is abandoned, the engine is re-created, and an empty reading is returned."""
+        import threading
+
+        img = img if img is not None else self.grab()
+        box: dict = {}
+
+        def work():
+            try:
+                box["text"] = asyncio.run(self._ocr(img))
+            except Exception as e:  # surface as an empty reading
+                box["error"] = repr(e)
+
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+        t.join(timeout)
+        if t.is_alive():
+            self.timeouts = getattr(self, "timeouts", 0) + 1
+            self._engine = OcrEngine.try_create_from_user_profile_languages()
+            return SpeedReading(None, None, None, "<ocr timeout>")
+        if "error" in box:
+            return SpeedReading(None, None, None, f"<ocr error {box['error']}>")
+        return parse_speed(box["text"])

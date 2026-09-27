@@ -37,6 +37,17 @@ class LimitConfig:
     # nearest while still damping flicker (the target is smoothed trainer speed).
     hysteresis: float = 0.25
     max_notches_per_s: float = 4.0
+    # Coast hold (ride 11:39 feedback: stopping pedalling downhill braked the car at once because the
+    # limit followed the KICKR flywheel spin-down). When not pedalling, freeze the limit a step above
+    # where it was and send a small throttle that cancels the game's engine braking, so gravity decides:
+    # descents hold or gain speed, climbs slow. Coast test 11:57 (grade-corrected): throttle 0.03-0.1
+    # slows the car ~0.5-1.5 km/h/s on the flat (bike-like); 0 engine-brakes ~4; 0.15 accelerates.
+    coast_watts: float = 25.0       # below this (and low cadence) = not pedalling
+    coast_cadence: float = 20.0
+    coast_throttle: float = 0.05
+    coast_margin: int = 5           # display units above the frozen limit, room to gain speed downhill
+    coast_hold_s: float = 12.0      # then release: throttle 0, limit steps down to stop
+    release_step_s: float = 2.0     # one 5-unit step per this while releasing
 
 
 def kmh_to_display(kmh: float, units: str) -> float:
@@ -53,13 +64,45 @@ class SpeedLimitPlanner:
     def __init__(self, config: LimitConfig | None = None) -> None:
         self.config = config or LimitConfig()
         self.desired = MIN_LIMIT
+        self.coast_since: float | None = None
+        self.coast_limit = MIN_LIMIT
+        self.state = "stopped"  # stopped | riding | coasting | releasing
 
-    def update(self, target_kmh: float, active: bool) -> tuple[int, float]:
+    def is_pedalling(self, power_w, cadence_rpm) -> bool:
         c = self.config
-        if not active or target_kmh < c.moving_kmh:
-            self.desired = MIN_LIMIT
+        return (power_w or 0) >= c.coast_watts or (cadence_rpm or 0) >= c.coast_cadence
+
+    def update(self, target_kmh: float, active: bool, pedalling: bool = True,
+               now: float = 0.0) -> tuple[int, float]:
+        c = self.config
+        if not active:
+            self.coast_since, self.state, self.desired = None, "stopped", MIN_LIMIT
             return self.desired, 0.0
+        if not pedalling and self.desired > MIN_LIMIT:
+            if self.coast_since is None:
+                self.coast_since = now
+                self.coast_limit = min(self.desired + c.coast_margin, MAX_LIMIT)
+            held = now - self.coast_since
+            if held < c.coast_hold_s:
+                self.state = "coasting"
+                return self.coast_limit, c.coast_throttle
+            steps = int((held - c.coast_hold_s) // c.release_step_s) + 1
+            self.state = "releasing"
+            self.desired = max(MIN_LIMIT, self.coast_limit - STEP * steps)
+            return self.desired, 0.0
+        if pedalling:
+            self.coast_since = None
+        elif self.coast_since is not None:
+            # Released to the floor but still not pedalling (flywheel may still be spinning): stay stopped.
+            self.state, self.desired = "stopped", MIN_LIMIT
+            return self.desired, 0.0
+        if target_kmh < c.moving_kmh:
+            self.state, self.desired = "stopped", MIN_LIMIT
+            return self.desired, 0.0
+        self.state = "riding"
         want = kmh_to_display(target_kmh, c.units)
+        if self.desired == MIN_LIMIT and want > MIN_LIMIT:
+            self.desired = max(MIN_LIMIT, int(round(want / STEP)) * STEP)  # start from nearest step
         # Move a step only once the target is clearly past the boundary to the next step.
         while want > self.desired + STEP / 2 + c.hysteresis and self.desired < MAX_LIMIT:
             self.desired += STEP

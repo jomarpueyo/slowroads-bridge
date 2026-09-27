@@ -84,3 +84,47 @@ def test_sim_profile_and_packets():
     assert speed_at(prof, 30) == 20
     bike = parse_indoor_bike_data(packet(15.5, 80, 120))
     assert (bike.speed_kmh, bike.cadence_rpm, bike.power_w) == (pytest.approx(15.5), 80.0, 120)
+
+
+def test_coast_hold_freezes_limit_with_margin_and_coast_throttle():
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12, coast_margin=5, coast_throttle=0.05, release_step_s=2))
+    assert p.update(mph(40), True, True, 0.0) == (40, 0.6)
+    # stop pedalling: flywheel speed decays fast, but the limit holds at 40 + 5
+    assert p.update(mph(30), True, False, 1.0) == (45, 0.05)
+    assert p.update(mph(5), True, False, 12.9) == (45, 0.05)
+    assert p.state == "coasting"
+
+
+def test_coast_releases_gently_then_stays_stopped():
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12, coast_margin=5, release_step_s=2))
+    p.update(mph(40), True, True, 0.0)
+    p.update(mph(40), True, False, 0.0)                       # coast from 45
+    assert p.update(mph(10), True, False, 12.0) == (40, 0.0)  # first release step
+    assert p.update(mph(10), True, False, 14.0) == (35, 0.0)
+    assert p.update(mph(10), True, False, 30.0) == (MIN_LIMIT, 0.0)
+    # flywheel still turning but no pedalling: must not go back to drive throttle
+    assert p.update(mph(10), True, False, 31.0) == (MIN_LIMIT, 0.0)
+
+
+def test_pedalling_again_resumes_from_target():
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12))
+    p.update(mph(40), True, True, 0.0)
+    p.update(mph(40), True, False, 1.0)
+    assert p.update(mph(30), True, True, 5.0) == (30, 0.6)
+    assert p.state == "riding"
+
+
+def test_is_pedalling_uses_power_or_cadence():
+    p = SpeedLimitPlanner()
+    assert p.is_pedalling(0, 82)       # ride 11:39 t=135 s: a 0 W packet mid-pedalling at 82 rpm
+    assert p.is_pedalling(120, 0)
+    assert not p.is_pedalling(0, 0)
+    assert not p.is_pedalling(None, None)
+
+
+def test_sim_profile_power_override():
+    from bridge.sim import watts_at
+    prof = parse_profile("0:0,10:20:150,20:15:0,30:0")
+    assert watts_at(prof, 5) is None
+    assert watts_at(prof, 12) == 150
+    assert watts_at(prof, 25) == 0

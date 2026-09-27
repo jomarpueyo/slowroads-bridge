@@ -252,8 +252,65 @@ def test_limitstep(probe, pad):
     stop_car(probe, pad)
 
 
+def test_coast(probe, pad):
+    """Coast-throttle sweep with the debug panel (F4) on: for each throttle c, get to ~40 mph under a
+    40 limit, raise the limit to 60 so it can't interfere, hold c for 6 s, and measure deceleration and
+    grade from the panel. Flat-equivalent decel = measured decel - g*grade (35.3 km/h/s per unit grade):
+    on a climb part of the measured slowdown is gravity. NOTE: grade here uses start/end x,z, which OCR
+    garbles (minus sign as a dash); prefer elevation vs integrated panel speed (see RESEARCH.md §10)."""
+    from debugpanel import DebugPanelReader, grade
+
+    panel = DebugPanelReader()
+    dbg = open(LOG_DIR / f"exp-coast-{probe.stamp}-panel.csv", "w", newline="", encoding="utf-8")
+    dw = csv.writer(dbg)
+    dw.writerow(["t_s", "phase", "throttle", "x", "elev", "z", "kph", "rpm", "text"])
+
+    def panel_hold(phase, thr, seconds):
+        rows = []
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            tick = time.monotonic()
+            pad.set_controls(thr, 0.0)
+            r = panel.read()
+            t = time.monotonic() - probe.t0
+            dw.writerow([f"{t:.3f}", phase, thr, r.x, r.elev, r.z, r.kph, r.rpm, r.text])
+            rows.append((t, r))
+            time.sleep(max(0.0, 1 / HZ - (time.monotonic() - tick)))
+        dbg.flush()
+        return rows
+
+    wheel(-30)
+    wheel(7)  # floor 5 + 7 notches = 40
+    time.sleep(0.5)
+    log.info("limit set to %s (want 40)", stable_limit(probe))
+    results = []
+    for c in (0.0, 0.03, 0.06, 0.1, 0.15):
+        panel_hold(f"to40_{c}", 0.6, 9.0)  # under the 40 limit
+        wheel(4)  # limit 60: out of the way
+        rows = [(t, r) for t, r in panel_hold(f"coast_{c}", c, 6.0) if r.kph is not None]
+        wheel(-4)
+        if len(rows) < 10:
+            log.warning("coast %.2f: too few panel readings (%d); is F4 on?", c, len(rows))
+            continue
+        head = [p for p in rows if p[0] <= rows[0][0] + 1.0]
+        tail = [p for p in rows if p[0] >= rows[-1][0] - 1.0]
+        v0 = sum(r.kph for _, r in head) / len(head)
+        v1 = sum(r.kph for _, r in tail) / len(tail)
+        dt = (tail[-1][0] + tail[0][0]) / 2 - (head[-1][0] + head[0][0]) / 2
+        decel = (v0 - v1) / dt
+        gr = grade(head[0][1], tail[-1][1])
+        flat = None if gr is None else decel - 35.3 * gr
+        results.append((c, v0, v1, decel, gr, flat))
+        log.info("coast %.2f: %.1f -> %.1f km/h in %.1f s = %.2f km/h/s decel; grade %s; flat-equivalent %s",
+                 c, v0, v1, dt, decel, "n/a" if gr is None else f"{gr * 100:+.1f}%",
+                 "n/a" if flat is None else f"{flat:.2f} km/h/s")
+    dbg.close()
+    stop_car(probe, pad)
+    log.info("summary (throttle, v0, v1, decel, grade, flat-equivalent decel): %s", results)
+
+
 TESTS = {"limiter": test_limiter, "holds": test_holds, "buttons": test_buttons,
-         "limitrange": test_limitrange, "limitstep": test_limitstep}
+         "limitrange": test_limitrange, "limitstep": test_limitstep, "coast": test_coast}
 
 
 def main() -> int:

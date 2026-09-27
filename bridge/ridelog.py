@@ -49,7 +49,7 @@ class DriveLog:
     """Every controller tick (20 Hz): what the bridge believed and what it sent."""
 
     FIELDS = ["t_s", "wall_time", "active", "bike_kmh", "target_kmh", "car_est_kmh",
-              "throttle", "trigger", "brake"]
+              "throttle", "trigger", "brake", "plan"]
 
     def __init__(self, log_dir: Path, stamp: str, start: float) -> None:
         self.path = log_dir / f"drive-{stamp}.csv"
@@ -59,11 +59,11 @@ class DriveLog:
         self.start = start
         self._rows = 0
 
-    def write(self, now, active, bike_kmh, out, trigger) -> None:
+    def write(self, now, active, bike_kmh, out, trigger, plan: str = "") -> None:
         self._writer.writerow([
             f"{now - self.start:.3f}", datetime.now().isoformat(timespec="milliseconds"), int(active),
             f"{bike_kmh:.2f}", f"{out.target_kmh:.2f}", f"{out.car_est_kmh:.2f}",
-            f"{out.throttle:.3f}", f"{trigger:.3f}", f"{out.brake:.3f}",
+            f"{out.throttle:.3f}", f"{trigger:.3f}", f"{out.brake:.3f}", plan,
         ])
         self._rows += 1
         if self._rows % 20 == 0:  # flush once a second

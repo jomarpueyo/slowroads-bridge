@@ -36,6 +36,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     lg.add_argument("--units", choices=["mph", "km/h"], default=lc.units, help="the game's speed units")
     lg.add_argument("--drive-throttle", type=float, default=lc.drive_throttle,
                     help="throttle held while pedalling (the game caps speed at the limit)")
+    lg.add_argument("--coast-throttle", type=float, default=lc.coast_throttle,
+                    help="throttle while coasting; ~0.05 cancels engine braking so gravity decides")
+    lg.add_argument("--coast-hold", type=float, default=lc.coast_hold_s,
+                    help="seconds of coasting before easing down to a stop (0 = old behaviour)")
+    lg.add_argument("--coast-margin", type=int, default=lc.coast_margin,
+                    help="limit headroom while coasting, display units (room to speed up downhill)")
     ap.add_argument("--sim", metavar="PROFILE",
                     help='test without the bike: "seconds:bike_kmh,..." e.g. "0:0,5:15,40:15,55:0"')
     g = ap.add_argument_group("speed mode (defaults come from settings.json when present)")
@@ -81,7 +87,9 @@ async def run(args: argparse.Namespace) -> None:
         log.warning("could not write %s", ACTIVE_RIDE)
     mapper = ThrottleMapper(MapperConfig(p_min=args.p_min, p_max=args.p_max, gamma=args.gamma, tau_s=args.tau))
     controller = SpeedController(drive_config(args))
-    planner = SpeedLimitPlanner(LimitConfig(units=args.units, drive_throttle=args.drive_throttle))
+    planner = SpeedLimitPlanner(LimitConfig(
+        units=args.units, drive_throttle=args.drive_throttle, coast_throttle=args.coast_throttle,
+        coast_hold_s=args.coast_hold, coast_margin=args.coast_margin))
     actuator = WheelActuator(dry_run=args.dry_run)
     pad = NullPad() if args.dry_run else VirtualPad()
     state = {"conn": "starting", "power": None, "cadence": None,
@@ -127,7 +135,9 @@ async def run(args: argparse.Namespace) -> None:
             active = not mapper.is_stale(now)
             if args.mode == "limit":
                 target = controller.step(now - last, active).target_kmh
-                desired, throttle = planner.update(target, active)
+                pedalling = planner.is_pedalling(state["power"], state["cadence"])
+                desired, throttle = planner.update(target, active, pedalling, now)
+                state["plan"] = planner.state
                 actuator.step_toward(desired, now, planner.config.max_notches_per_s)
                 state["limit"] = actuator.current
                 limit_kmh = 0.0 if actuator.current is None else display_to_kmh(actuator.current, args.units)
@@ -141,7 +151,7 @@ async def run(args: argparse.Namespace) -> None:
             # Logged throttle is the controller's 0..1; the trigger is lifted past the dead zone.
             trigger = trigger_value(out.throttle, args.deadzone)
             pad.set_controls(trigger, out.brake)
-            drive_log.write(now, active, controller.bike_kmh, out, trigger)
+            drive_log.write(now, active, controller.bike_kmh, out, trigger, state.get("plan", ""))
             last = now
             await asyncio.sleep(1 / OUTPUT_HZ)
 
@@ -153,6 +163,8 @@ async def run(args: argparse.Namespace) -> None:
                 conn = "no data"
             if args.mode == "limit" and not actuator.game_focused():
                 conn += " (game not focused)"
+            elif args.mode == "limit" and state.get("plan") in ("coasting", "releasing"):
+                conn = state["plan"]
             line = format_status(now - ride.start, conn, state["power"], state["cadence"],
                                  state["out"], ride.packet_rate(now), ride.bad_packets,
                                  limit=None if args.mode != "limit" else (state["limit"], args.units))
