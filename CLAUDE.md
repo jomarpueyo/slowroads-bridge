@@ -86,7 +86,7 @@ packets to `tests/test_bridge.py`.
 
 ## Decisions
 - Data flows one way: never read game memory, mod the game, or send anything to the trainer.
-- Default `--mode speed` (bridge/drive.py): the game treats the trigger as an accelerator, so
+- `--mode speed` (bridge/drive.py; the default before limit mode, now a fallback): the game treats the trigger as an accelerator, so
   watts->throttle ran away (ride 08:53: throttle mean 0.13, car still too fast). Target car speed =
   trainer speed x `--gear` (3.0), capped at 95% of top speed; open-loop car-speed estimate from
   drive.car_accel (accel, constant + speed-squared drag, brake, top speed), loaded from
