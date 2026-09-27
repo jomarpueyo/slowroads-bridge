@@ -30,10 +30,10 @@ screen to scroll, then puts it back. If the limit ever looks wrong, stop pedalli
 seconds: going back to 5 mph re-syncs the count.
 
 The status line reads:
-`03:12  connected   185 W   82 rpm  target  45.0  game limit  30 mph  thr  60%  brk   0%  1.0 pkt/s  bad 0`
+`03:12 connected   185W  82rpm tgt  45 limit  30mph thr 60% brk  0% 1.0Hz bad 0`
 
-- **target**: bike speed × gear ratio (what the car should do), in km/h.
-- **game limit**: the speed limit the bridge has set in the game (the game holds the car there).
+- **tgt**: your (virtual) bike speed × gear ratio, in km/h: what the car should do. The first word is the state: `connected` (riding), `coasting`, `releasing`, or `NO GAME FOCUS`.
+- **limit**: the speed limit the bridge has set in the game (the game holds the car there).
 - **thr / brk**: what it is pressing on the virtual controller. In limit mode the throttle stays at
   0.6 while you pedal; the game caps the speed.
 
