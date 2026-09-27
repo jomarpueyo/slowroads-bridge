@@ -197,6 +197,42 @@ just has to stop braking the car when you stop pedalling:
 3. **Real grade via remote debugging** (idea 5): read `G.pitch` and `G.position.y`, which also enables
    trainer resistance on climbs. It's the most complete option and the one the original scope excludes.
 
+## 10. Coast hold: implemented and tested in-game (2026-09-27 11:57–12:19)
+
+Grade was measured for testing only, with the game's debug panel (F4), read by `tools/debugpanel.py`:
+elevation `pos.y`, plus distance integrated from the panel's `speed` (its x/z OCR is unreliable because
+the minus sign reads as a dash). The panel is not used while riding.
+
+**Coast-throttle sweep** (`tools/experiments.py coast`, grade-corrected: flat decel = measured − 35.3 × grade):
+
+| Coast throttle | Measured | Grade | Flat-equivalent |
+| --- | --- | --- | --- |
+| 0 | 8.6 km/h/s | +13.4% | about 3.9 (engine braking to a stop) |
+| 0.03 | 3.7 | +9.3% | about 0.5 |
+| 0.06 | −2.2 | −10.7% | about 1.5 |
+| 0.10 | 1.9 | +3.5% | about 0.6 |
+| 0.15 | 0.1 | +2.5% | about −0.8 (accelerates) |
+
+A road bike coasting on the flat loses about 0.7 km/h/s at 30 km/h, so the default is **0.05**. Single
+samples on steep terrain (±10–13%), so the value is a flag: `--coast-throttle`.
+
+**Coast hold** (`bridge/limiter.py`, default on): when power is under 25 W and cadence under 20 rpm, the
+limit freezes one step (5 mph) above where it was, and throttle goes to 0.05 for 12 s. After that,
+throttle 0 and the limit steps down 5 mph every 2 s to stop. Pedalling again resumes at once.
+
+Same simulated ride (`--sim`, bike 15 km/h then coast, 18 km/h then coast), real game, automatic motorbike:
+
+| Moment | Old (`--coast-hold 0`) | Coast hold |
+| --- | --- | --- |
+| Stop pedalling on a −1.5 to −4.6% descent | Limit followed flywheel spin-down 30 → 5 mph; car **48 → 24 km/h in 6 s** | Limit held 35 mph; car **48 → 56 km/h** (gained speed downhill) |
+| Stop pedalling on the flat, then +5% | Car 55 → 24 km/h in 9 s | Car 57 → 43 km/h in 9 s (about 1.5 km/h/s), slowing on the climb |
+| After about 12 s without pedalling | — | Throttle 0, limit steps down, stopped in about 6 s |
+
+Other findings this session: a PC crash rolled the game's saved settings back (gearbox to **Manual**, so
+gear N and no movement), and the first controller press after a game restart only wakes the controller.
+Both are in QUICKSTART troubleshooting. Windows OCR can hang indefinitely (the recorder froze for 15 min),
+so every OCR call now has a 2 s timeout.
+
 ## Sources
 
 - [Steam store: Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/) · [Steam community announcements](https://steamcommunity.com/app/3431300) · [Slow Roads controls (third-party)](https://slowxroads.com/blog/slow-roads-controls/)

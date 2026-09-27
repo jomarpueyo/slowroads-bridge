@@ -128,3 +128,10 @@ def test_sim_profile_power_override():
     assert watts_at(prof, 5) is None
     assert watts_at(prof, 12) == 150
     assert watts_at(prof, 25) == 0
+
+
+def test_coast_hold_zero_restores_old_following():
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=0))
+    p.update(mph(40), True, True, 0.0)
+    assert p.update(mph(30), True, False, 1.0) == (30, 0.6)   # follows the target, no freeze
+    assert p.state == "riding"

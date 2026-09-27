@@ -38,6 +38,11 @@ game while its window is focused; default pad X cycles AUTOSTEER/AUTOSPEED/AUTOD
 assist, D-pad left/right change scene/weather; no default pad button changes the limit.
 Off-production tests: tools/experiments.py and `python -m bridge --sim "t:kmh,..."` (bridge/sim.py).
 Results in docs/RESEARCH.md §8.
+**Coast hold (default, 2026-09-27):** not pedalling (<25 W and <20 rpm) freezes the limit +5 mph with
+throttle 0.05 for 12 s, then releases (throttle 0, -5 mph / 2 s). In-game: descent 48 -> 56 km/h
+instead of 48 -> 24. `--coast-hold 0` = old following. docs/RESEARCH.md §10.
+The debug panel (F4) and tools/debugpanel.py are for TESTING ONLY (user: no debug screen while riding).
+Grade for tests = elevation (pos.y) vs distance integrated from panel speed.
 
 ## Ride-time data (for tuning after a ride; same <stamp> across files)
 - Bridge (never reads the screen): ride-*.csv (packets), drive-*.csv (20 Hz controller ticks),

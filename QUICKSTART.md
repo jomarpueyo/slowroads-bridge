@@ -18,8 +18,10 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
      window is in front, and the status line then shows `(game not focused)`.
    - Leave the speedometer (bottom right) uncovered so the recorder can read it.
 4. Ride. The bridge turns your speed into the game's speed limit (5 mph steps), and the game holds
-   the car at that limit, uphill and down. Stop pedalling and the limit steps down, so the car slows
-   and stops. It never reverses.
+   the car at that limit, uphill and down. **Stop pedalling and the car coasts** (status `coasting`):
+   the limit stays put and gravity decides, so it rolls faster downhill and slows on climbs. After
+   12 s without pedalling it eases to a stop (status `releasing`). Pedal again any time to resume. It
+   never reverses.
 5. Press **Ctrl+C** in the bridge window to finish. The recorder stops on its own.
 
 **Don't touch the mouse wheel over the game during a ride.** The bridge changes the limit by
@@ -45,6 +47,9 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | Speed from effort (watts, road-bike physics) instead of flywheel speed | `--speed-source power` (and `--rider-kg`) | trainer |
 | Gentler or harder acceleration up to the limit | `--drive-throttle` | 0.6 |
 | Game set to km/h | `--units km/h` | mph |
+| Longer or shorter coast before easing to a stop | `--coast-hold` (seconds; 0 = old behaviour, no coasting) | 12 |
+| Coast slows too much / rolls on too long on the flat | `--coast-throttle` (higher = rolls further) | 0.05 |
+| More or less room to speed up downhill while coasting | `--coast-margin` (mph above your last speed) | 5 |
 | Test without the bike (scripted ride) | `--sim "0:0,5:15,40:15,55:0"` (seconds:bike km/h) | off |
 | Test without the game | `--dry-run` (reads the bike, sends nothing) | off |
 | Previous model-based control (no in-game limit) | `--mode speed` (uses `--ramp`, `--max-throttle`, `--max-brake`) | limit |

@@ -78,6 +78,8 @@ class SpeedLimitPlanner:
         if not active:
             self.coast_since, self.state, self.desired = None, "stopped", MIN_LIMIT
             return self.desired, 0.0
+        if c.coast_hold_s <= 0:
+            pedalling = True  # coast hold disabled: the limit follows the trainer speed (pre-11:39 behaviour)
         if not pedalling and self.desired > MIN_LIMIT:
             if self.coast_since is None:
                 self.coast_since = now
