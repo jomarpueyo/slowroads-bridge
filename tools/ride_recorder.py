@@ -69,31 +69,50 @@ def main() -> int:
     csv_path = LOG_DIR / f"speed-{stamp}.csv"
     print(f"recorder: ride {stamp} -> {csv_path}", flush=True)
 
+    # Ride 11:39 lost the recorder 7 s in with no trace (console window closed with it). Errors now
+    # go to recorder-<stamp>.log and the loop carries on, re-creating the screen reader if needed.
+    import logging
+    import traceback
+
+    logging.basicConfig(filename=LOG_DIR / f"recorder-{stamp}.log", level=logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(message)s")
+    rlog = logging.getLogger("recorder")
+    rlog.info("recording ride %s", stamp)
     t0 = time.monotonic()
     next_shot = t0
-    reads = good = 0
+    reads = good = errors = 0
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["t_s", "wall_time", "kmh", "shown", "unit", "gear", "ocr_text"])
         try:
             while ACTIVE_RIDE.exists():
                 tick = time.monotonic()
-                r = reader.read()
-                reads += 1
-                good += r.speed is not None
-                w.writerow([f"{tick - t0:.3f}", datetime.now().isoformat(timespec="milliseconds"),
-                            "" if r.kmh is None else f"{r.kmh:.2f}", "" if r.speed is None else r.speed,
-                            r.unit or "", r.gear or "", r.text])
-                if reads % 5 == 0:
-                    f.flush()
-                if not args.no_shots and tick >= next_shot:
-                    shot = reader._sct.grab(reader._sct.monitors[1])
-                    img = Image.frombytes("RGB", shot.size, shot.rgb).resize((960, 540))
-                    img.save(shots / f"{datetime.now():%H%M%S}.jpg", quality=70)
-                    next_shot = tick + args.shot_every
+                try:
+                    r = reader.read()
+                    reads += 1
+                    good += r.speed is not None
+                    w.writerow([f"{tick - t0:.3f}", datetime.now().isoformat(timespec="milliseconds"),
+                                "" if r.kmh is None else f"{r.kmh:.2f}", "" if r.speed is None else r.speed,
+                                r.unit or "", r.gear or "", r.text])
+                    if reads % 5 == 0:
+                        f.flush()
+                    if not args.no_shots and tick >= next_shot:
+                        shot = reader._sct.grab(reader._sct.monitors[1])
+                        img = Image.frombytes("RGB", shot.size, shot.rgb).resize((960, 540))
+                        img.save(shots / f"{datetime.now():%H%M%S}.jpg", quality=70)
+                        next_shot = tick + args.shot_every
+                except Exception:
+                    errors += 1
+                    rlog.error("sample failed (%d so far):\n%s", errors, traceback.format_exc())
+                    time.sleep(1.0)
+                    try:
+                        reader = SpeedoReader()
+                    except Exception:
+                        rlog.error("could not re-create screen reader:\n%s", traceback.format_exc())
                 time.sleep(max(0.0, 1 / args.ocr_hz - (time.monotonic() - tick)))
         except KeyboardInterrupt:
             pass
+    rlog.info("done: %d reads, %d readable, %d errors", reads, good, errors)
     snapshot_game_state(LOG_DIR / f"game-{stamp}-end")
     print(f"recorder: done, {reads} speed reads ({good} readable)")
     return 0

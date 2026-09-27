@@ -161,6 +161,42 @@ Remaining limitations: 5 mph steps are coarse at low speed. The bridge scrolls w
 (cursor moves for about 0.1 s per step). Cruise mode and binding pad buttons to the limit are untested.
 Hills now come from the game itself, but the trainer still gets no resistance (ideas 4, 5, 7).
 
+## 9. Coasting and elevation (ride 11:39, 2026-09-27)
+
+**Problem (rider feedback):** going downhill without pedalling, the car slows almost at once, which feels
+wrong. The log shows why. In limit mode the target follows the KICKR's reported speed, and that decays as
+the flywheel spins down (about 1 km/h/s, 20 → 0 km/h in about 20 s at 65–85 s). The ×3 gear makes that
+about 3 km/h/s for the car. The limit steps down 5 mph at a time (40 → 30 mph within 5 s), and the game
+**actively brakes** to each new limit. So coasting behaves like braking regardless of terrain, where a real
+bike on a descent would hold or gain speed.
+
+**Is there an elevation or grade metric?** Searched the installed game (read-only):
+
+| Source | Result |
+| --- | --- |
+| Game logs / saved settings | None: no play log; Local Storage has settings and best times only |
+| Debug overlay (`Toggle debug overlay`) | Only a three.js Stats frame-rate panel; no altitude or grade |
+| HUD | Speed, gear, odometer, speed-control target. No elevation |
+| Game internals | **Yes**: the car's pitch `G.pitch = G.rotation.z` (≈ road grade) and `G.position` (y = elevation) are computed every frame, and the chase camera uses the pitch. Only reachable from outside through Chromium remote debugging (idea 5), which the V1 scope excludes |
+| Screenshots (testing only) | The camera tilts with car pitch, so the horizon's height on screen moves with grade. Possible to estimate, but noisy (hills, trees) and it's screen reading |
+| Trainer | The KICKR reports no grade; it only receives one |
+
+**Options for natural coasting, without a grade source.** The game already simulates gravity; the bridge
+just has to stop braking the car when you stop pedalling:
+
+1. **Coast hold.** When power drops below about 20 W, freeze the limit at its current value (don't follow the
+   flywheel decay) and send a small "coast throttle" that roughly cancels the game's engine braking. The
+   game's physics then decides: a descent holds or gains speed up to the frozen limit (plus an optional
+   margin), and a climb slows the car. After a timeout (say 8 s), or when cadence stays 0, step the limit
+   down gently (one notch every 2 s) to stop. Needs one test: the throttle where flat-road deceleration is
+   bike-like (about 1 km/h/s). Candidates 0, 0.05, 0.1, 0.15 from 40 mph with `tools/experiments.py holds`.
+   Ride 09:29 hints that 0.08–0.15 gives about 4 km/h/s at 90 km/h, while 0 gives about 23 km/h/s
+   (engine braking).
+2. **Slower limit decay.** Rate-limit downward limit changes while not pedalling (for example one notch per
+   3 s). Simple, but still terrain-blind.
+3. **Real grade via remote debugging** (idea 5): read `G.pitch` and `G.position.y`, which also enables
+   trainer resistance on climbs. It's the most complete option and the one the original scope excludes.
+
 ## Sources
 
 - [Steam store: Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/) · [Steam community announcements](https://steamcommunity.com/app/3431300) · [Slow Roads controls (third-party)](https://slowxroads.com/blog/slow-roads-controls/)
