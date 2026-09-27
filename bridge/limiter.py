@@ -51,6 +51,13 @@ class LimitConfig:
     # 2 s with throttle 0 dropped the car 60 -> 18 km/h in 6 s in the 12:34 test (~7 km/h/s, harsh).
     release_step_s: float = 4.0
     release_throttle_floor: int = 10
+    # Push bonus (rider request 2026-09-27: reward pushing hard). Road-bike physics makes speed grow
+    # with ~cube root of power, so hard efforts barely move the limit. Above push_easy_w the gear ratio
+    # ramps up to (1 + push_boost) at push_hard_w, and while pushing the limit steps up as soon as the
+    # target passes the current step instead of waiting for the midpoint to the next one.
+    push_boost: float = 0.5
+    push_easy_w: float = 150.0
+    push_hard_w: float = 400.0
 
 
 def kmh_to_display(kmh: float, units: str) -> float:
@@ -71,12 +78,29 @@ class SpeedLimitPlanner:
         self.coast_limit = MIN_LIMIT
         self.state = "stopped"  # stopped | riding | coasting | releasing
 
+    def push_factor(self, smoothed_w: float) -> float:
+        """Gear multiplier for effort: 1.0 at or below push_easy_w, 1 + push_boost at push_hard_w+."""
+        c = self.config
+        if c.push_boost <= 0 or c.push_hard_w <= c.push_easy_w:
+            return 1.0
+        x = (smoothed_w - c.push_easy_w) / (c.push_hard_w - c.push_easy_w)
+        return 1.0 + c.push_boost * min(max(x, 0.0), 1.0)
+
+    def push_throttle(self, base: float, factor: float) -> float:
+        """Throttle while riding: drive_throttle, rising to 1.0 at full push, so the game accelerates
+        harder toward the higher limit (the limit still caps the speed)."""
+        c = self.config
+        if c.push_boost <= 0 or base <= 0:
+            return base
+        level = min(max((factor - 1.0) / c.push_boost, 0.0), 1.0)
+        return base + (1.0 - base) * level
+
     def is_pedalling(self, power_w, cadence_rpm) -> bool:
         c = self.config
         return (power_w or 0) >= c.coast_watts or (cadence_rpm or 0) >= c.coast_cadence
 
     def update(self, target_kmh: float, active: bool, pedalling: bool = True,
-               now: float = 0.0) -> tuple[int, float]:
+               now: float = 0.0, pushing: bool = False) -> tuple[int, float]:
         c = self.config
         if not active:
             self.coast_since, self.state, self.desired = None, "stopped", MIN_LIMIT
@@ -109,10 +133,14 @@ class SpeedLimitPlanner:
         want = kmh_to_display(target_kmh, c.units)
         if self.desired == MIN_LIMIT and want > MIN_LIMIT:
             self.desired = max(MIN_LIMIT, int(round(want / STEP)) * STEP)  # start from nearest step
-        # Move a step only once the target is clearly past the boundary to the next step.
-        while want > self.desired + STEP / 2 + c.hysteresis and self.desired < MAX_LIMIT:
+        # Move a step only once the target is clearly past the boundary to the next step. While pushing
+        # hard, step up as soon as the target passes the current step (rewards effort).
+        up_at = c.hysteresis if pushing else STEP / 2 + c.hysteresis
+        while want > self.desired + up_at and self.desired < MAX_LIMIT:
             self.desired += STEP
-        while want < self.desired - STEP / 2 - c.hysteresis and self.desired > MIN_LIMIT:
+        # ...and don't undo that early step while still pushing: only drop below the step under it.
+        down_at = STEP + c.hysteresis if pushing else STEP / 2 + c.hysteresis
+        while want < self.desired - down_at and self.desired > MIN_LIMIT:
             self.desired -= STEP
         return self.desired, c.drive_throttle
 

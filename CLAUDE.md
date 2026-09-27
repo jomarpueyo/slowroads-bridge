@@ -44,6 +44,8 @@ instead of 48 -> 24. `--coast-hold 0` = old following. docs/RESEARCH.md §10.
 **Speed source (default virtual, 2026-09-27):** every KICKR Bluetooth channel incl. Zwift protocol is 1.00 Hz
 (measured); no ANT+ stick present. bridge/drive.py VirtualBike integrates power at 20 Hz (gear 2.0 default for it).
 Limit mode no longer caps target at speed-mode top speed. docs/RESEARCH.md section 11.
+**Push bonus (default):** smoothed power 150->400 W ramps gear x1.0->x1.5, limit steps up early, throttle 0.6->1.0
+(user asked to reward hard efforts). docs/RESEARCH.md section 12.
 The debug panel (F4) and tools/debugpanel.py are for TESTING ONLY (user: no debug screen while riding).
 Grade for tests = elevation (pos.y) vs distance integrated from panel speed.
 

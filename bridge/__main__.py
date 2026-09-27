@@ -44,6 +44,10 @@ def parse_args(argv=None) -> argparse.Namespace:
                     help="seconds of coasting before easing down to a stop (0 = old behaviour)")
     lg.add_argument("--coast-margin", type=int, default=lc.coast_margin,
                     help="limit headroom while coasting, display units (room to speed up downhill)")
+    lg.add_argument("--push-boost", type=float, default=lc.push_boost,
+                    help="extra gear at hard effort: 0.5 = +50%% at --push-hard-w and above (0 = off)")
+    lg.add_argument("--push-easy-w", type=float, default=lc.push_easy_w, help="watts where the push bonus starts")
+    lg.add_argument("--push-hard-w", type=float, default=lc.push_hard_w, help="watts for the full push bonus")
     ap.add_argument("--sim", metavar="PROFILE",
                     help='test without the bike: "seconds:bike_kmh,..." e.g. "0:0,5:15,40:15,55:0"')
     g = ap.add_argument_group("speed mode (defaults come from settings.json when present)")
@@ -98,7 +102,8 @@ async def run(args: argparse.Namespace) -> None:
     controller = SpeedController(drive_config(args))
     planner = SpeedLimitPlanner(LimitConfig(
         units=args.units, drive_throttle=args.drive_throttle, coast_throttle=args.coast_throttle,
-        coast_hold_s=args.coast_hold, coast_margin=args.coast_margin))
+        coast_hold_s=args.coast_hold, coast_margin=args.coast_margin, push_boost=args.push_boost,
+        push_easy_w=args.push_easy_w, push_hard_w=args.push_hard_w))
     actuator = WheelActuator(dry_run=args.dry_run)
     pad = NullPad() if args.dry_run else VirtualPad()
     vbike = VirtualBike(mass_kg=args.rider_kg)
@@ -138,9 +143,9 @@ async def run(args: argparse.Namespace) -> None:
         if args.speed_source == "virtual":
             pass  # stepped at 20 Hz in output_loop
         elif args.speed_source == "power":
-            controller.set_bike_speed(bike_speed_from_power(mapper.smoothed, mass_kg=args.rider_kg))
+            state["bike_raw"] = bike_speed_from_power(mapper.smoothed, mass_kg=args.rider_kg)
         elif bike.speed_kmh is not None:
-            controller.set_bike_speed(bike.speed_kmh)
+            state["bike_raw"] = bike.speed_kmh
         state["power"], state["cadence"] = bike.power_w, bike.cadence_rpm
         out = state["out"]
         ride.write(now, raw, bike, mapper.smoothed, out.throttle, drive=out)
@@ -151,12 +156,17 @@ async def run(args: argparse.Namespace) -> None:
             now = time.monotonic()
             active = not mapper.is_stale(now)
             if args.speed_source == "virtual":
-                controller.set_bike_speed(vbike.step(state.get("drive_w", 0) if active else 0.0, now - last))
+                state["bike_raw"] = vbike.step(state.get("drive_w", 0) if active else 0.0, now - last)
+            push = planner.push_factor(mapper.smoothed) if (args.mode == "limit" and active) else 1.0
+            state["push"] = push
+            controller.set_bike_speed(state.get("bike_raw", 0.0) * push)
             if args.mode == "limit":
                 target = controller.step(now - last, active).target_kmh
                 pedalling = planner.is_pedalling(state["power"], state["cadence"])
-                desired, throttle = planner.update(target, active, pedalling, now)
-                state["plan"] = planner.state
+                desired, throttle = planner.update(target, active, pedalling, now, pushing=push > 1.05)
+                if planner.state == "riding":
+                    throttle = planner.push_throttle(throttle, push)
+                state["plan"] = f"push x{push:.2f}" if push > 1.05 and planner.state == "riding" else planner.state
                 actuator.step_toward(desired, now, planner.config.max_notches_per_s)
                 state["limit"] = actuator.current
                 limit_kmh = 0.0 if actuator.current is None else display_to_kmh(actuator.current, args.units)
@@ -182,7 +192,8 @@ async def run(args: argparse.Namespace) -> None:
                 conn = "no data"
             if args.mode == "limit" and not actuator.game_focused():
                 conn = "NO GAME FOCUS"
-            elif args.mode == "limit" and state.get("plan") in ("coasting", "releasing"):
+            elif args.mode == "limit" and (state.get("plan") in ("coasting", "releasing")
+                                           or str(state.get("plan", "")).startswith("push")):
                 conn = state["plan"]
             line = format_status(now - ride.start, conn, state["power"], state["cadence"],
                                  state["out"], ride.packet_rate(now), ride.bad_packets,

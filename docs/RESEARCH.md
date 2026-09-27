@@ -272,6 +272,30 @@ limit matched in 20/20 samples; both coasts were on descents and the car rolled 
 - The status line is shortened to under 80 columns (it wrapped in the ride.bat console).
 - At 12:28:12 the game showed a LOADING screen (a reset). Afterwards the game limit (25) differed from the bridge's count (30) until the next stop re-synced it.
 
+## 12. Push bonus: rewarding hard efforts (2026-09-27 12:50)
+
+Rider request: pushing hard should make the in-game limit rise faster and higher. The problem is physics:
+road-bike speed grows with about the cube root of power, so doubling watts adds only about 26% speed.
+
+`bridge/limiter.py` push bonus, on by default. It's driven by power smoothed over about 2 s, so a single
+hard stroke doesn't trigger it:
+1. **Gear ×(1 + 0.5 × effort)**, where effort ramps from 0 at 150 W to 1 at 400 W.
+2. **Earlier step-up:** while pushing, the limit steps up as soon as the target passes the current step
+   (normally it waits until halfway to the next), and it doesn't step back down until the target is a full
+   step below.
+3. **Throttle 0.6 → 1.0** at full push, so the game accelerates harder toward the new limit (the limit still
+   caps the speed).
+
+| Replay of ride 12:23 (virtual bike, gear 2) | No bonus | Push bonus |
+| --- | --- | --- |
+| Mean limit when smoothed power > 250 W | 44.5 mph | 65.0 mph |
+| Mean limit at 80–150 W | 33.4 mph | 33.8 mph |
+| Top limit (865 W sprint) | 55 mph | 80 mph |
+
+In-game `--sim` test: 150 W held 30 mph. At 450 W the limit went 35 → 60 mph in 4 s and 80 mph in 16 s, and
+the car followed 52 → 127 km/h. Back at 150 W it eased to 45 mph over about 10 s. The limit matched in 15/16
+samples. Tune with `--push-boost`, `--push-easy-w` and `--push-hard-w`.
+
 ## Sources
 
 - [Steam store: Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/) · [Steam community announcements](https://steamcommunity.com/app/3431300) · [Slow Roads controls (third-party)](https://slowxroads.com/blog/slow-roads-controls/)

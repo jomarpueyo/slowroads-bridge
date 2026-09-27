@@ -175,3 +175,28 @@ def test_release_keeps_coast_throttle_until_low_and_steps_every_4s_by_default():
     assert p.update(0, True, False, 16.0) == (35, 0.05)
     assert p.update(0, True, False, 32.0) == (15, 0.05)
     assert p.update(0, True, False, 36.0) == (10, 0.0)        # last 10 mph: throttle off to stop
+
+
+def test_push_factor_ramps_from_easy_to_hard():
+    p = SpeedLimitPlanner()
+    assert p.push_factor(100) == 1.0
+    assert p.push_factor(150) == 1.0
+    assert p.push_factor(275) == pytest.approx(1.25)
+    assert p.push_factor(400) == pytest.approx(1.5)
+    assert p.push_factor(900) == pytest.approx(1.5)
+    assert SpeedLimitPlanner(LimitConfig(push_boost=0)).push_factor(900) == 1.0
+
+
+def test_pushing_steps_up_as_soon_as_target_passes_the_step():
+    normal, pushing = SpeedLimitPlanner(), SpeedLimitPlanner()
+    for p in (normal, pushing):
+        p.update(mph(30), True)
+    assert normal.update(mph(31), True)[0] == 30                 # needs > 32.75 normally
+    assert pushing.update(mph(31), True, pushing=True)[0] == 35  # > 30.25 is enough when pushing
+
+
+def test_push_throttle_rises_to_full_at_full_push():
+    p = SpeedLimitPlanner()
+    assert p.push_throttle(0.6, 1.0) == 0.6
+    assert p.push_throttle(0.6, 1.25) == pytest.approx(0.8)
+    assert p.push_throttle(0.6, 1.5) == pytest.approx(1.0)

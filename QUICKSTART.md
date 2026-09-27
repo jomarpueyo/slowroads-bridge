@@ -34,6 +34,8 @@ The status line reads:
 
 - **tgt**: your (virtual) bike speed × gear ratio, in km/h: what the car should do. The first word is the state: `connected` (riding), `coasting`, `releasing`, or `NO GAME FOCUS`.
 - **limit**: the speed limit the bridge has set in the game (the game holds the car there).
+- `push x1.32` in place of the state means the push bonus is on: pushing above 150 W raises your gear (up to
+  ×1.5 at 400 W), steps the limit up sooner, and opens the throttle to 1.0 so the game accelerates harder.
 - **thr / brk**: what it is pressing on the virtual controller. In limit mode the throttle stays at
   0.6 while you pedal; the game caps the speed.
 
@@ -45,6 +47,7 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | --- | --- | --- |
 | Slower or faster car for the same pedalling | `--gear` (car km/h per bike km/h) | 2.0 (virtual), 3.0 (trainer) |
 | Where your speed comes from | `--speed-source virtual` (simulated bike from your watts, smooth, default), `trainer` (KICKR flywheel speed, steps once a second), `power` | virtual |
+| Reward for pushing hard (more speed and a faster climb to it) | `--push-boost` (0.5 = +50% gear at full push; 0 = off), `--push-easy-w` / `--push-hard-w` (where it starts / is full) | 0.5, 150 W, 400 W |
 | Your weight (virtual bike: heavier builds speed slower and coasts longer) | `--rider-kg` (rider + bike) | 85 |
 | Gentler or harder acceleration up to the limit | `--drive-throttle` | 0.6 |
 | Game set to km/h | `--units km/h` | mph |
