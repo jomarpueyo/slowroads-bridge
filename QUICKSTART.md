@@ -113,6 +113,8 @@ packages, checks the environment and runs the tests. It is safe to run again.
 | Status says `no data` | The trainer is connected but sending nothing for 3 s. Throttle is held at 0. Pedal |
 | Car doesn't move | Click into the game window (the controller only works while it's focused). Start the bridge before the game. Unplug real controllers |
 | Car runs away | Speed control is off or in cruise mode: turn on the padlock, in limit mode. Or the gearbox is Manual: set Automatic |
+| HUD gear shows **N**, engine revs but the car doesn't move | Gearbox is Manual (a PC crash on 2026-09-27 rolled the game's settings back to Manual). Vehicle → tuning → Gearbox: Automatic |
+| First controller press after starting the game does nothing | The game only notices a controller after its first press. Press any button once, or it wakes when throttle is applied |
 | Assist label says AUTOSPEED or AUTODRIVE | Press X on a controller (or use the game menu) until it says AUTOSTEER |
 | Limit doesn't match your speed | Stop pedalling for a few seconds: the limit drops to 5 mph and the bridge's count re-syncs |
 | Recorder `speed-*.csv` empty | Speedometer covered or the game not in front. The ride still works without it |
