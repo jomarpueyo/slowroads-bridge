@@ -147,6 +147,11 @@ async def run(args: argparse.Namespace) -> None:
         elif bike.speed_kmh is not None:
             state["bike_raw"] = bike.speed_kmh
         state["power"], state["cadence"] = bike.power_w, bike.cadence_rpm
+        # The KICKR keeps reporting cadence for a couple of seconds after pedalling stops (ride 12:48:
+        # 0 W at 63 rpm), which delayed coast detection. Two low-power packets in a row = not pedalling;
+        # a single 0 W packet mid-stroke is still ignored.
+        low = (bike.power_w or 0) < planner.config.coast_watts
+        state["low_n"] = state.get("low_n", 0) + 1 if low else 0
         out = state["out"]
         ride.write(now, raw, bike, mapper.smoothed, out.throttle, drive=out)
 
@@ -162,7 +167,8 @@ async def run(args: argparse.Namespace) -> None:
             controller.set_bike_speed(state.get("bike_raw", 0.0) * push)
             if args.mode == "limit":
                 target = controller.step(now - last, active).target_kmh
-                pedalling = planner.is_pedalling(state["power"], state["cadence"])
+                cad = state["cadence"] if state.get("low_n", 0) < 2 else 0
+                pedalling = planner.is_pedalling(state["power"], cad)
                 desired, throttle = planner.update(target, active, pedalling, now, pushing=push > 1.05)
                 if planner.state == "riding":
                     throttle = planner.push_throttle(throttle, push)

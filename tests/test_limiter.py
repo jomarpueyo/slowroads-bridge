@@ -106,12 +106,25 @@ def test_coast_releases_gently_then_stays_stopped():
     assert p.update(mph(10), True, False, 31.0) == (MIN_LIMIT, 0.0)
 
 
-def test_pedalling_again_resumes_from_target():
+def test_pedalling_again_holds_limit_during_resume_grace_then_steps_down_gently():
+    # Ride 12:48 t=244 s: resuming after a coast dropped the limit 40 -> 25 at once.
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12, resume_grace_s=8, down_step_s=2.5))
+    p.update(mph(40), True, True, 0.0)
+    p.update(mph(40), True, False, 1.0)                        # coasting at 45
+    assert p.update(mph(26), True, True, 5.0) == (45, 0.6)      # resume: held at the coast limit
+    assert p.state == "riding"
+    assert p.update(mph(26), True, True, 12.9)[0] == 45         # still in the 8 s grace
+    assert p.update(mph(26), True, True, 13.1)[0] == 40         # grace over: one step
+    assert p.update(mph(26), True, True, 14.0)[0] == 40         # not again until 2.5 s later
+    assert p.update(mph(26), True, True, 15.6)[0] == 35
+
+
+def test_resume_grace_still_allows_stepping_up():
     p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12))
     p.update(mph(40), True, True, 0.0)
-    p.update(mph(40), True, False, 1.0)
-    assert p.update(mph(30), True, True, 5.0) == (30, 0.6)
-    assert p.state == "riding"
+    p.update(mph(40), True, False, 1.0)                        # coasting at 45
+    assert p.update(mph(55), True, True, 3.0)[0] == 55          # watts built fast: go up
+
 
 
 def test_is_pedalling_uses_power_or_cadence():
@@ -133,7 +146,8 @@ def test_sim_profile_power_override():
 def test_coast_hold_zero_restores_old_following():
     p = SpeedLimitPlanner(LimitConfig(coast_hold_s=0))
     p.update(mph(40), True, True, 0.0)
-    assert p.update(mph(30), True, False, 1.0) == (30, 0.6)   # follows the target, no freeze
+    assert p.update(mph(30), True, False, 1.0) == (35, 0.6)   # follows the target (one step at a time)
+    assert p.update(mph(30), True, False, 3.6) == (30, 0.6)
     assert p.state == "riding"
 
 
@@ -200,3 +214,11 @@ def test_push_throttle_rises_to_full_at_full_push():
     assert p.push_throttle(0.6, 1.0) == 0.6
     assert p.push_throttle(0.6, 1.25) == pytest.approx(0.8)
     assert p.push_throttle(0.6, 1.5) == pytest.approx(1.0)
+
+
+def test_step_down_is_rate_limited_while_riding():
+    p = SpeedLimitPlanner(LimitConfig(down_step_s=2.5))
+    p.update(mph(50), True, True, 0.0)
+    assert p.update(mph(20), True, True, 1.0)[0] == 45
+    assert p.update(mph(20), True, True, 2.0)[0] == 45
+    assert p.update(mph(20), True, True, 3.5)[0] == 40

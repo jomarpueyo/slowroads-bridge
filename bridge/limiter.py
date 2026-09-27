@@ -58,6 +58,12 @@ class LimitConfig:
     push_boost: float = 0.5
     push_easy_w: float = 150.0
     push_hard_w: float = 400.0
+    # Resume grace (ride 12:48: resuming after a coast dropped the limit at once, e.g. 40 -> 25 mph at
+    # 244 s, because the virtual bike slowed on "flat" physics while the game car rolled downhill).
+    # After coasting, hold the limit (up-steps still allowed) for resume_grace_s while watts build, and
+    # while riding never step down more than once per down_step_s.
+    resume_grace_s: float = 8.0
+    down_step_s: float = 2.5
 
 
 def kmh_to_display(kmh: float, units: str) -> float:
@@ -77,6 +83,9 @@ class SpeedLimitPlanner:
         self.coast_since: float | None = None
         self.coast_limit = MIN_LIMIT
         self.state = "stopped"  # stopped | riding | coasting | releasing
+        self.resume_until = float("-inf")
+        self.resume_floor = MIN_LIMIT
+        self._last_down = float("-inf")
 
     def push_factor(self, smoothed_w: float) -> float:
         """Gear multiplier for effort: 1.0 at or below push_easy_w, 1 + push_boost at push_hard_w+."""
@@ -121,6 +130,10 @@ class SpeedLimitPlanner:
             thr = c.coast_throttle if self.desired > c.release_throttle_floor else 0.0
             return self.desired, thr
         if pedalling:
+            if self.coast_since is not None:  # resuming after a coast: hold the limit while watts build
+                self.resume_until = now + c.resume_grace_s
+                self.resume_floor = self.coast_limit if self.state == "coasting" else self.desired
+                self.desired = max(self.desired, self.resume_floor)
             self.coast_since = None
         elif self.coast_since is not None:
             # Released to the floor but still not pedalling (flywheel may still be spinning): stay stopped.
@@ -140,8 +153,11 @@ class SpeedLimitPlanner:
             self.desired += STEP
         # ...and don't undo that early step while still pushing: only drop below the step under it.
         down_at = STEP + c.hysteresis if pushing else STEP / 2 + c.hysteresis
-        while want < self.desired - down_at and self.desired > MIN_LIMIT:
-            self.desired -= STEP
+        in_grace = now < self.resume_until
+        if (want < self.desired - down_at and self.desired > MIN_LIMIT and not in_grace
+                and now - self._last_down >= c.down_step_s):
+            self.desired -= STEP  # one step at a time, at most every down_step_s
+            self._last_down = now
         return self.desired, c.drive_throttle
 
 

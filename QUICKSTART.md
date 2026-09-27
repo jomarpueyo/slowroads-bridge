@@ -20,8 +20,9 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
 4. Ride. The bridge turns your speed into the game's speed limit (5 mph steps), and the game holds
    the car at that limit, uphill and down. **Stop pedalling and the car coasts** (status `coasting`):
    the limit stays put and gravity decides, so it rolls faster downhill and slows on climbs. After
-   12 s without pedalling it eases to a stop (status `releasing`). Pedal again any time to resume. It
-   never reverses.
+   12 s without pedalling it eases to a stop (status `releasing`). Pedal again any time to resume: the
+   limit holds where it was for 8 s while your watts build, then eases down a step at a time if you're
+   riding easier than before. It never reverses.
 5. Press **Ctrl+C** in the bridge window to finish. The recorder stops on its own.
 
 **Don't touch the mouse wheel over the game during a ride.** The bridge changes the limit by

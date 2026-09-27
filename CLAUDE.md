@@ -46,6 +46,8 @@ instead of 48 -> 24. `--coast-hold 0` = old following. docs/RESEARCH.md §10.
 Limit mode no longer caps target at speed-mode top speed. docs/RESEARCH.md section 11.
 **Push bonus (default):** smoothed power 150->400 W ramps gear x1.0->x1.5, limit steps up early, throttle 0.6->1.0
 (user asked to reward hard efforts). docs/RESEARCH.md section 12.
+**Resume grace (2026-09-27):** after a coast, pedalling holds the limit 8 s (up-steps allowed); riding step-downs
+at most one per 2.5 s; two <25 W packets = coasting regardless of lingering cadence. docs/RESEARCH.md section 13.
 The debug panel (F4) and tools/debugpanel.py are for TESTING ONLY (user: no debug screen while riding).
 Grade for tests = elevation (pos.y) vs distance integrated from panel speed.
 

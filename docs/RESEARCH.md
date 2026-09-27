@@ -296,6 +296,28 @@ In-game `--sim` test: 150 W held 30 mph. At 450 W the limit went 35 → 60 mph i
 the car followed 52 → 127 km/h. Back at 150 W it eased to 45 mph over about 10 s. The limit matched in 15/16
 samples. Tune with `--push-boost`, `--push-easy-w` and `--push-hard-w`.
 
+## 13. Resuming after a coast (ride 12:48, 2026-09-27 13:00)
+
+**Rider feedback:** pedalling again after coasting dropped the car to a lower speed before the watts could
+build. The log showed it: at 244 s the car was rolling 40 mph downhill under a 40 limit; resuming at 162 W
+dropped the limit to 25 (car 40 → 25 mph). Also at 158 s (40 → 35) and 212 s (40 → 30). The cause: while
+coasting, the virtual bike slows on flat-road physics while the game car may be rolling downhill, so on
+resume the target is well below where the car is.
+
+A second finding: the KICKR keeps reporting cadence for a couple of seconds after pedalling stops (0 W at
+63 rpm), which delayed coast detection by 2–4 s while the limit slid down.
+
+**Changes (`bridge/limiter.py`, `bridge/__main__.py`):**
+- **Resume grace 8 s:** when pedalling resumes after a coast or release, the limit is held (step-ups are
+  still allowed) while watts build.
+- **Gentle step-down:** while riding, the limit drops at most one 5 mph step every 2.5 s.
+- **Coast detection:** two consecutive packets under 25 W now count as not pedalling, whatever the cadence;
+  a single 0 W packet mid-stroke is still ignored.
+
+In-game `--sim` (200 W, 10 s coast, resume at 110 W): coasting held 50 mph (car 72 → 76 km/h downhill). On
+resume the limit **stayed 50 for 8 s** (car about 49 mph), then eased 50 → 45 → 40 → 35 → 30 over about 8 s to
+the 110 W steady state. The second coast was detected within 1 s. The limit matched in 31/32 samples.
+
 ## Sources
 
 - [Steam store: Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/) · [Steam community announcements](https://steamcommunity.com/app/3431300) · [Slow Roads controls (third-party)](https://slowxroads.com/blog/slow-roads-controls/)
