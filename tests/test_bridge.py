@@ -54,7 +54,7 @@ def test_truncated_packet_raises():
 @pytest.mark.parametrize(
     "raw, speed, cadence, power",
     [
-        # Captured from KICKR CORE, logs/ride-20260927-085102.csv (flags always 0x0044).
+        # Captured from a real KICKR CORE (ride 2026-09-27 08:51) (flags always 0x0044).
         ("44 00 CA 06 60 00 31 01", 17.38, 48.0, 305),
         ("44 00 59 07 86 00 FA 00", 18.81, 67.0, 250),
         ("44 00 DA 03 44 00 29 00", 9.86, 34.0, 41),

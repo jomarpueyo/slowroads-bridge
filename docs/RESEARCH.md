@@ -87,7 +87,7 @@ Checked locally in the installed game (read-only, nothing changed):
 | ANT+ trainer data is 4 Hz by the profile, but Wahoo's CORE 2 Q&A says its ANT+ broadcasts at 1 Hz. **Unverified** for our unit | [Cyclingnews](https://www.cyclingnews.com/features/what-is-ant-plus/), [Wahoo CORE 2 Q&A](https://www.wahoofitness.com/blog/wahoo-kickr-core-2-technical-qa/) |
 | FTMS "Set Indoor Bike Simulation Parameters" (op 0x11: wind, grade, Crr, Cw) sets slope-based resistance. GoldenCheetah and qdomyos-zwift disagree 10× on Crr scaling, so test on hardware | [onyourleft #43](https://github.com/openzigs/onyourleft/issues/43) |
 | The KICKR's reported **speed is flywheel speed**, set by gear × cadence, not by power. Our logs: 305 W gave 17 km/h and 128 W gave 11 km/h | our ride logs |
-| Model still unknown: the unit advertises "KICKR CORE". Read the BLE Device Information model string (0x2A24) or check the Wahoo app to tell a CORE from a CORE 2 | — |
+| Model still unknown: the unit advertises "KICKR CORE" plus a 4-character ID. Read the BLE Device Information model string (0x2A24) or check the Wahoo app to tell a CORE from a CORE 2 | — |
 
 ## 5. Prior art
 

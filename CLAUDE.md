@@ -2,8 +2,7 @@
 
 Pedal power from a Wahoo KICKR CORE (Bluetooth FTMS) becomes the right trigger of a virtual
 Xbox 360 pad, which Slow Roads reads as the throttle. The game auto-steers. Windows only.
-Design doc: "Slow Roads × KICKR CORE Bridge — V1 Tech Overview" (Claude Docs,
-(private doc)).
+Background and design history: docs/RESEARCH.md (the original V1 tech overview lived in a private doc).
 
 ## Layout
 - `bridge/ftms.py` — BLE scan/connect/reconnect (bleak) + Indoor Bike Data parser

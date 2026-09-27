@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    # Windows: the OCR tools import the Windows OCR bindings (winrt). The virtual controller
+    # driver (vgamepad / ViGEmBus) is not installed here; no test needs it.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "bleak>=0.22" "pytest>=8" -r requirements-calibration.txt
+      - name: Run tests
+        run: python -m pytest -q

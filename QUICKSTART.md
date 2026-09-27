@@ -61,7 +61,7 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | Previous model-based control (no in-game limit) | `--mode speed` (uses `--ramp`, `--max-throttle`, `--max-brake`) | limit |
 | Old watts-to-throttle behaviour | `--mode power` | limit |
 
-To make a change permanent, add it under `"ride"` in `settings.json`, for example `"gear": 2.5`.
+To make a change permanent, add it under `"ride"` in `settings.json` (create it by copying `settings.example.json`), for example `"gear": 2.5`.
 
 ## When to recalibrate
 
@@ -85,7 +85,7 @@ recordings are how we measure that.
 | `logs/speed-*.csv` | Recorder: speedometer read from the screen (~5 Hz) |
 | `logs/shots-*/` | Recorder: screenshot every 5 s |
 | `logs/game-*-start/`, `-end/` | Recorder: copy of the game's saved settings (vehicle, units) |
-| `settings.json` | Calibrated car model and your ride preferences |
+| `settings.json` | Your ride preferences and calibration (git-ignored; start from `settings.example.json`) |
 | `CLAUDE.md` | Decisions, verified facts, open questions (for Claude Code sessions) |
 
 Files from one ride share the same timestamp. After a ride, ask Claude Code to "check the logs from my
