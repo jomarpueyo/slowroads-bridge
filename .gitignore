@@ -1,7 +1,33 @@
-.venv/
+# Local environment (created by scripts/setup.ps1)
+/.venv/
+
+# Personal data: ride logs, screenshots, game-settings copies, and your settings (holds your trainer's
+# Bluetooth address). Anchored to the project root so other files named settings.json aren't caught.
+/logs/
+/settings.json
+
+# Python caches and tooling
 __pycache__/
+*.py[cod]
 .pytest_cache/
-logs/
-settings.json
-*.egg-info/
 .ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Secrets that should never be committed
+.env
+.env.*
+!.env.example
+
+# Editors and OS clutter
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Claude Code per-user settings (shared .claude/ files can still be committed)
+.claude/settings.local.json

@@ -1,0 +1,16 @@
+# Store text with LF in the repository; check out Windows scripts with CRLF so they behave the same on
+# every clone, whatever the user's core.autocrlf setting.
+* text=auto
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.in text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+*.jpg binary
+*.png binary
