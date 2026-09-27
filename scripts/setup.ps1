@@ -5,6 +5,14 @@
 #
 #   Get-ChildItem -Recurse | Unblock-File
 #   powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+#
+# Supply chain (docs/SECURITY.md finding 6):
+#   - winget packages are pinned to the versions this project was tested with; winget verifies each
+#     installer's SHA-256 from its manifest. -AllowLatest installs current versions instead.
+#   - Python packages install from hash-locked files (pip --require-hashes): every package, including
+#     dependencies, must match a recorded SHA-256. Regenerate with pip-compile --generate-hashes.
+
+param([switch]$AllowLatest)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -20,15 +28,19 @@ function Refresh-Path {
                 [Environment]::GetEnvironmentVariable("Path", "User")
 }
 
-function Ensure-Winget($id, $label) {
+function Ensure-Winget($id, $label, $version) {
     $listed = winget list --id $id --exact --accept-source-agreements 2>$null | Out-String
     if ($listed -match [regex]::Escape($id)) {
         Write-Host "$label already installed"
         return
     }
-    Write-Host "installing $label ($id)..."
-    winget install --id $id --exact --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) { throw "winget install $id failed (exit $LASTEXITCODE)" }
+    $wgArgs = @("install", "--id", $id, "--exact", "--silent", "--accept-package-agreements", "--accept-source-agreements")
+    if (-not $AllowLatest) { $wgArgs += @("--version", $version) }
+    Write-Host "installing $label ($id $(if ($AllowLatest) { 'latest' } else { $version }))..."
+    & winget @wgArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "winget install $id failed (exit $LASTEXITCODE). If version $version is no longer offered, re-run with -AllowLatest."
+    }
 }
 
 try {
@@ -38,33 +50,36 @@ try {
     }
 
     Step "Python 3.13"
-    Ensure-Winget "Python.Python.3.13" "Python 3.13"
+    Ensure-Winget "Python.Python.3.13" "Python 3.13" "3.13.15"
     Step "Git"
-    Ensure-Winget "Git.Git" "Git"
+    Ensure-Winget "Git.Git" "Git" "2.55.0.3"
     Step "ViGEmBus 1.22.0 driver (needs admin approval)"
-    Ensure-Winget "ViGEm.ViGEmBus" "ViGEmBus"
+    Ensure-Winget "ViGEm.ViGEmBus" "ViGEmBus" "1.22.0"
     Refresh-Path
 
     Step "Locating Python"
-    $py = $null
+    # Executable and arguments kept separate and called directly (no Invoke-Expression).
+    $pyExe = $null
+    $pyArgs = @()
     foreach ($cand in @("$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
                         "$env:ProgramFiles\Python313\python.exe")) {
-        if (Test-Path $cand) { $py = $cand; break }
+        if (Test-Path $cand) { $pyExe = $cand; break }
     }
-    if (-not $py -and (Get-Command py -ErrorAction SilentlyContinue)) { $py = "py -3.13" }
-    if (-not $py) { throw "Python 3.13 installed but not found; open a new terminal and re-run." }
-    Write-Host "using $py"
+    if (-not $pyExe -and (Get-Command py -ErrorAction SilentlyContinue)) {
+        $pyExe = (Get-Command py).Source
+        $pyArgs = @("-3.13")
+    }
+    if (-not $pyExe) { throw "Python 3.13 installed but not found; open a new terminal and re-run." }
+    Write-Host "using $pyExe $pyArgs"
 
     Step "Virtual environment (.venv)"
     if (-not (Test-Path ".venv\Scripts\python.exe")) {
-        Invoke-Expression "& $py -m venv .venv"
+        & $pyExe @pyArgs -m venv .venv
+        if ($LASTEXITCODE -ne 0) { throw "could not create .venv" }
     }
     $venvPy = Join-Path $root ".venv\Scripts\python.exe"
-    & $venvPy -m pip install --upgrade pip --quiet
-    & $venvPy -m pip install -r requirements.txt
-    if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
-    & $venvPy -m pip install -r requirements-calibration.txt
-    if ($LASTEXITCODE -ne 0) { throw "pip install (calibration extras) failed" }
+    & $venvPy -m pip install --require-hashes -r requirements.txt -r requirements-calibration.txt -r requirements-test.txt
+    if ($LASTEXITCODE -ne 0) { throw "pip install failed (a hash mismatch means a package changed; do not bypass it)" }
 
     Step "Git repository"
     if (-not (Test-Path ".git") -and (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -80,11 +95,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "tests failed" }
 
     Step "Done"
-    if (Test-Path "settings.json") {
-        Write-Host "Ready. Start a ride with ride.bat (see QUICKSTART.md)."
-    } else {
-        Write-Host "Next: calibrate once with calibrate.bat, then ride with ride.bat (see QUICKSTART.md)."
-    }
+    Write-Host "Ready. Start a ride with ride.bat (see QUICKSTART.md). The first ride pairs with your trainer."
 }
 finally {
     Stop-Transcript | Out-Null

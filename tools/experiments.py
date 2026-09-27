@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bridge.ridelog import LOG_DIR, setup_event_log, timestamp  # noqa: E402
-from speedo import SpeedoReader  # noqa: E402
+from speedo import SpeedoReader, csv_safe  # noqa: E402
 
 log = logging.getLogger("exp")
 HZ = 10
@@ -36,8 +36,10 @@ LIMIT_BOX = {"left": 1590, "top": 895, "width": 110, "height": 60}
 
 
 def focus_game() -> bool:
+    from bridge import gamewin
+
     user32 = ctypes.windll.user32
-    hwnd = user32.FindWindowW(None, "Slow Roads")
+    hwnd = gamewin.find_game_window()  # by process (slowroads.exe), not by title
     if not hwnd:
         log.warning("Slow Roads window not found")
         return False
@@ -83,7 +85,7 @@ class Probe:
             self.last_kmh = r.kmh
         self.w.writerow([f"{time.monotonic() - self.t0:.3f}", phase, throttle, brake,
                          "" if r.kmh is None else f"{r.kmh:.2f}", r.gear or "", "" if lim is None else lim,
-                         foreground_title()[:30], r.text, lim_text])
+                         foreground_title()[:30], csv_safe(r.text), csv_safe(lim_text)])
         self.file.flush()
         return r.kmh, lim
 
@@ -273,7 +275,7 @@ def test_coast(probe, pad):
             pad.set_controls(thr, 0.0)
             r = panel.read()
             t = time.monotonic() - probe.t0
-            dw.writerow([f"{t:.3f}", phase, thr, r.x, r.elev, r.z, r.kph, r.rpm, r.text])
+            dw.writerow([f"{t:.3f}", phase, thr, r.x, r.elev, r.z, r.kph, r.rpm, csv_safe(r.text)])
             rows.append((t, r))
             time.sleep(max(0.0, 1 / HZ - (time.monotonic() - tick)))
         dbg.flush()
@@ -322,9 +324,13 @@ def main() -> int:
     setup_event_log(LOG_DIR, probe.stamp, verbose=True, prefix=f"exp-{args.test}")
     from bridge.pad import VirtualPad
 
+    # These tests take over the game: focus, mouse wheel, cursor and controller (finding 8).
+    print(f"TESTING TOOL: '{args.test}' will drive Slow Roads"
+          f"{', bring it to the front,' if args.focus else ''} and move the mouse. Ctrl+C within 3 s to cancel.",
+          flush=True)
     pad = VirtualPad()
     pad.set_controls(0.0, 0.0)
-    time.sleep(3.0)  # let the game pick up the new pad
+    time.sleep(3.0)  # cancel window, and lets the game pick up the new pad
     if args.focus:
         focus_game()
         time.sleep(1.0)

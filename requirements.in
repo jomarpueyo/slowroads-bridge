@@ -1,0 +1,3 @@
+# Ride bridge runtime. Lock: pip-compile --generate-hashes requirements.in
+bleak
+vgamepad

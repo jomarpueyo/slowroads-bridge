@@ -92,6 +92,8 @@ class SpeedLimitPlanner:
         c = self.config
         if c.push_boost <= 0 or c.push_hard_w <= c.push_easy_w:
             return 1.0
+        if smoothed_w != smoothed_w:  # NaN
+            return 1.0
         x = (smoothed_w - c.push_easy_w) / (c.push_hard_w - c.push_easy_w)
         return 1.0 + c.push_boost * min(max(x, 0.0), 1.0)
 
@@ -166,41 +168,61 @@ class POINT(ctypes.Structure):
 
 
 class WheelActuator:
-    """Scrolls the game's speed limit. Only acts while Slow Roads is the foreground window."""
+    """Scrolls the game's speed limit. Only acts while the slowroads.exe window is focused *and* is the
+    window under the scroll point (docs/SECURITY.md finding 2); a notch only counts if it was sent to
+    the game, so the bridge's count can't drift when another window is in the way."""
 
-    def __init__(self, window_title: str = "Slow Roads", point=(250, 600), dry_run: bool = False) -> None:
-        self.title = window_title
-        self.point = point
+    def __init__(self, dry_run: bool = False, win=None) -> None:
+        from . import gamewin
+
         self.dry_run = dry_run
+        self.win = win or gamewin
         self.current: int | None = None  # unknown until homed
         self._last_notch = 0.0
+        self._game = None
         self._user32 = None if dry_run else ctypes.windll.user32
 
-    def game_focused(self) -> bool:
-        if self.dry_run:
-            return True
-        hwnd = self._user32.GetForegroundWindow()
-        buf = ctypes.create_unicode_buffer(128)
-        self._user32.GetWindowTextW(hwnd, buf, 128)
-        return buf.value == self.title
+    def _game_hwnd(self):
+        if self._game is not None and self.win.is_game(self._game):
+            return self._game
+        self._game = self.win.find_game_window()
+        return self._game
 
-    def _scroll(self, notches: int) -> None:
+    def game_focused(self) -> bool:
+        return True if self.dry_run else self.win.game_focused()
+
+    def _scroll(self, notches: int) -> int:
+        """Scroll over an uncovered point of the game window. Returns the notches actually sent."""
         if self.dry_run or notches == 0:
-            return
+            return abs(notches)
+        game = self._game_hwnd()
+        point = self.win.safe_scroll_point(game) if game else None
+        if point is None:
+            log.debug("no uncovered point on the game window; not scrolling")
+            return 0
         u = self._user32
         orig = POINT()
         u.GetCursorPos(ctypes.byref(orig))
-        u.SetCursorPos(*self.point)
-        for _ in range(abs(notches)):
-            u.mouse_event(0x0800, 0, 0, 120 if notches > 0 else -120, 0)  # MOUSEEVENTF_WHEEL
-            time.sleep(0.03)
-        u.SetCursorPos(orig.x, orig.y)
+        sent = 0
+        try:
+            u.SetCursorPos(*point)
+            for _ in range(abs(notches)):
+                if self.win.top_level_at(*point) != game or not self.win.game_focused():
+                    break  # something moved over the point, or focus left the game
+                u.mouse_event(0x0800, 0, 0, 120 if notches > 0 else -120, 0)  # MOUSEEVENTF_WHEEL
+                sent += 1
+                time.sleep(0.03)
+        finally:
+            u.SetCursorPos(orig.x, orig.y)
+        return sent
 
     def home(self) -> bool:
-        """Scroll to the floor so the count is known. Returns False if the game isn't focused."""
+        """Scroll to the floor so the count is known. Returns False if it couldn't complete."""
         if not self.game_focused():
             return False
-        self._scroll(-((MAX_LIMIT - MIN_LIMIT) // STEP + RESYNC_EXTRA))
+        want = (MAX_LIMIT - MIN_LIMIT) // STEP + RESYNC_EXTRA
+        if self._scroll(-want) < want:
+            return False  # interrupted: position unknown, try again later
         self.current = MIN_LIMIT
         log.info("limit homed to %d", MIN_LIMIT)
         return True
@@ -215,9 +237,11 @@ class WheelActuator:
         if now - self._last_notch < 1.0 / max_per_s:
             return
         if desired == MIN_LIMIT and self.current - STEP == MIN_LIMIT:
-            self._scroll(-(1 + RESYNC_EXTRA))  # extra notches are ignored at the floor: exact again
+            if self._scroll(-(1 + RESYNC_EXTRA)) >= 1:  # extras are ignored at the floor: exact again
+                self.current = MIN_LIMIT
+        elif self._scroll(1 if desired > self.current else -1) == 1:
+            self.current += STEP if desired > self.current else -STEP
         else:
-            self._scroll(1 if desired > self.current else -1)
-        self.current += STEP if desired > self.current else -STEP
+            return  # not delivered: keep the count, retry next tick
         self._last_notch = now
         log.debug("limit -> %d", self.current)

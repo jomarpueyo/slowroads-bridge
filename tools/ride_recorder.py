@@ -4,7 +4,7 @@ The ride bridge never reads the screen. This separate process does, so a ride ca
 against what really happened in the game (actual speed vs the bridge's estimate, hills,
 vehicle, surface). Slow Roads writes no play log, so the game side is captured as:
   - speed-<stamp>.csv       speedometer OCR ~5 Hz (speed, gear, raw OCR text, wall time)
-  - shots-<stamp>/          full-screen JPEG every 5 s (960x540)
+  - shots-<stamp>/          JPEG of the game window every 5 s, only while it's in front (never the desktop)
   - game-<stamp>-start/end/ copies of the game's saved settings (Local Storage), for vehicle etc.
 
 Waits for the bridge to start (logs/active-ride.txt), uses the same <stamp> so files line up
@@ -16,6 +16,7 @@ Usage: python tools/ride_recorder.py [--shot-every 5] [--ocr-hz 5] [--no-shots]
 import argparse
 import csv
 import os
+import re
 import shutil
 import sys
 import time
@@ -37,12 +38,30 @@ def snapshot_game_state(dest: Path) -> None:
         print(f"game state snapshot failed: {e}")
 
 
+STAMP_RE = re.compile(r"^\d{8}-\d{6}$")
+
+
+def valid_stamp(text: str) -> str | None:
+    """The ride stamp names every output path, so accept only YYYYMMDD-HHMMSS (docs/SECURITY.md
+    finding 3: a crafted active-ride.txt with three or more parent-directory steps wrote outside logs/)."""
+    text = (text or "").strip()
+    return text if STAMP_RE.match(text) else None
+
+
 def wait_for_ride() -> str | None:
     print("recorder: waiting for the bridge to start...", flush=True)
     end = time.monotonic() + WAIT_FOR_BRIDGE_S
     while time.monotonic() < end:
         if ACTIVE_RIDE.exists():
-            return ACTIVE_RIDE.read_text(encoding="utf-8").strip()
+            try:
+                raw = ACTIVE_RIDE.read_text(encoding="utf-8")[:64]
+            except OSError:
+                raw = ""
+            stamp = valid_stamp(raw)
+            if stamp is None:
+                print(f"recorder: ignoring invalid ride stamp {raw[:40]!r}")
+                return None
+            return stamp
         time.sleep(0.5)
     return None
 
@@ -59,7 +78,9 @@ def main() -> int:
         print("recorder: bridge did not start; exiting")
         return 1
     from PIL import Image
-    from speedo import SpeedoReader
+    from speedo import SpeedoReader, csv_safe
+
+    from bridge import gamewin
 
     reader = SpeedoReader()
     shots = LOG_DIR / f"shots-{stamp}"
@@ -93,13 +114,21 @@ def main() -> int:
                     good += r.speed is not None
                     w.writerow([f"{tick - t0:.3f}", datetime.now().isoformat(timespec="milliseconds"),
                                 "" if r.kmh is None else f"{r.kmh:.2f}", "" if r.speed is None else r.speed,
-                                r.unit or "", r.gear or "", r.text])
+                                r.unit or "", r.gear or "", csv_safe(r.text)])
                     if reads % 5 == 0:
                         f.flush()
                     if not args.no_shots and tick >= next_shot:
-                        shot = reader._sct.grab(reader._sct.monitors[1])
-                        img = Image.frombytes("RGB", shot.size, shot.rgb).resize((960, 540))
-                        img.save(shots / f"{datetime.now():%H%M%S}.jpg", quality=70)
+                        # Game window only, and only while it's in front: never other apps or the
+                        # desktop (docs/SECURITY.md finding 4).
+                        game = gamewin.find_game_window()
+                        rect = gamewin.window_rect(game) if game and gamewin.game_focused() else None
+                        if rect and rect[2] > rect[0] and rect[3] > rect[1]:
+                            box = {"left": rect[0], "top": rect[1], "width": rect[2] - rect[0],
+                                   "height": rect[3] - rect[1]}
+                            shot = reader._sct.grab(box)
+                            img = Image.frombytes("RGB", shot.size, shot.rgb)
+                            img.thumbnail((960, 540))
+                            img.save(shots / f"{datetime.now():%H%M%S}.jpg", quality=70)
                         next_shot = tick + args.shot_every
                 except Exception:
                     errors += 1

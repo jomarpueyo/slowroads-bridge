@@ -1,0 +1,8 @@
+# Calibration and testing tools (screen OCR). Lock: pip-compile --generate-hashes requirements-calibration.in
+-c requirements.txt
+mss
+pillow
+winrt-Windows.Media.Ocr
+winrt-Windows.Graphics.Imaging
+winrt-Windows.Globalization
+winrt-Windows.Storage.Streams  # speedo.py uses DataWriter directly

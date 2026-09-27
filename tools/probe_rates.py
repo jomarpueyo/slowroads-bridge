@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from bleak import BleakClient  # noqa: E402
 
+from bridge import settings  # noqa: E402
 from bridge.ftms import find_trainer  # noqa: E402
 from bridge.ridelog import LOG_DIR, setup_event_log, timestamp  # noqa: E402
 
@@ -34,7 +35,7 @@ KNOWN = {
 
 
 async def probe(seconds: float) -> None:
-    device = await find_trainer()
+    device = await find_trainer(address=settings.load_trainer())  # pinned trainer only, if paired
     if device is None:
         sys.exit("trainer not found; wake the KICKR and close other apps")
     times: dict[str, list[float]] = defaultdict(list)

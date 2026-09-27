@@ -58,6 +58,7 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | More or less room to speed up downhill while coasting | `--coast-margin` (mph above your last speed) | 5 |
 | Test without the bike (scripted ride) | `--sim "0:0,5:15,40:15,55:0"` (seconds:bike km/h) | off |
 | Test without the game | `--dry-run` (reads the bike, sends nothing) | off |
+| Use a different trainer | `--trainer pair` (forget the saved one and pair with the first FTMS trainer found) or `--trainer AA:BB:CC:DD:EE:FF` | saved in `settings.json` |
 | Previous model-based control (no in-game limit) | `--mode speed` (uses `--ramp`, `--max-throttle`, `--max-brake`) | limit |
 | Old watts-to-throttle behaviour | `--mode power` | limit |
 
@@ -83,7 +84,7 @@ recordings are how we measure that.
 | `logs/drive-*.csv` | Every controller tick (20 Hz): target, throttle, brake; `car_est_kmh` is the game limit set (limit mode) or the model estimate (speed mode) |
 | `logs/bridge-*.log` | Connects, drops, errors, settings used |
 | `logs/speed-*.csv` | Recorder: speedometer read from the screen (~5 Hz) |
-| `logs/shots-*/` | Recorder: screenshot every 5 s |
+| `logs/shots-*/` | Recorder: game-window screenshot every 5 s (only while the game is in front) |
 | `logs/game-*-start/`, `-end/` | Recorder: copy of the game's saved settings (vehicle, units) |
 | `settings.json` | Your ride preferences and calibration (git-ignored; start from `settings.example.json`) |
 | `CLAUDE.md` | Decisions, verified facts, open questions (for Claude Code sessions) |
@@ -120,7 +121,7 @@ packages, checks the environment and runs the tests. It is safe to run again.
 | Symptom | Fix |
 | --- | --- |
 | `.venv\Scripts\python` not found | You're in the wrong folder: `cd` into `slowroads-bridge` first, or use the `.bat` files |
-| Stuck on `scanning` | Wake the KICKR. Close the Wahoo app and Zwift (they hold the connection) |
+| Stuck on `scanning` | Wake the KICKR. Close the Wahoo app and Zwift (they hold the connection). New or replaced trainer: `ride.bat --trainer pair` |
 | Status says `no data` | The trainer is connected but sending nothing for 3 s. Throttle is held at 0. Pedal |
 | Car doesn't move | Click into the game window (the controller only works while it's focused). Start the bridge before the game. Unplug real controllers |
 | Car runs away | Speed control is off or in cruise mode: turn on the padlock, in limit mode. Or the gearbox is Manual: set Automatic |

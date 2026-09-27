@@ -92,6 +92,8 @@ class VirtualBike:
     def step(self, watts: float, dt: float) -> float:
         if dt <= 0:
             return self.kmh
+        if not (watts == watts and abs(watts) != float("inf")):  # NaN/inf never reach the controller
+            watts = 0.0
         # Integrate in small sub-steps so a large dt (a stalled loop) stays stable.
         n = max(1, int(dt / 0.02))
         h = dt / n

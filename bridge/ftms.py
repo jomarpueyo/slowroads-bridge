@@ -71,15 +71,35 @@ def parse_power(data: bytes) -> int | None:
     return parse_indoor_bike_data(data).power_w
 
 
-async def find_trainer(name_hint: str = "KICKR", timeout: float = 15.0):
-    from bleak import BleakScanner
+def trainer_filter(address: str | None = None, name_hint: str | None = None):
+    """Which advertising devices count as our trainer (docs/SECURITY.md finding 1).
 
-    log.info("scanning for FTMS trainer (name hint %r, up to %.0f s)", name_hint, timeout)
+    Pinned: only the saved address. Pairing (no saved address): the device must advertise the FTMS
+    service; matching by name alone is only allowed when name_hint is given explicitly (--name).
+    FTMS has no authentication, so pinning is what stops a nearby device posing as the trainer."""
+    pinned = address.upper() if address else None
 
     def is_trainer(device, adv) -> bool:
+        if pinned:
+            return (device.address or "").upper() == pinned
         uuids = [u.lower() for u in (adv.service_uuids or [])]
+        if FTMS_SERVICE in uuids:
+            return True
         name = device.name or adv.local_name or ""
-        return FTMS_SERVICE in uuids or name_hint.lower() in name.lower()
+        return bool(name_hint) and name_hint.lower() in name.lower()
+
+    return is_trainer
+
+
+async def find_trainer(name_hint: str | None = None, timeout: float = 15.0, address: str | None = None):
+    from bleak import BleakScanner
+
+    if address:
+        log.info("scanning for the paired trainer %s (up to %.0f s)", address, timeout)
+    else:
+        log.info("pairing: scanning for a device advertising FTMS%s (up to %.0f s)",
+                 f" or named like {name_hint!r}" if name_hint else "", timeout)
+    is_trainer = trainer_filter(address, name_hint)
 
     # Returns as soon as a match is seen instead of waiting out the full timeout.
     device = await BleakScanner.find_device_by_filter(is_trainer, timeout=timeout)
@@ -93,15 +113,18 @@ async def find_trainer(name_hint: str = "KICKR", timeout: float = 15.0):
 async def run_reader(
     on_packet: Callable[[bytes], None],
     on_state: Callable[[str], None],
-    name_hint: str = "KICKR",
+    name_hint: str | None = None,
     reconnect_delay: float = 3.0,
+    address: str | None = None,
+    on_connected: Callable[[str, str], None] | None = None,
 ) -> None:
-    """Connect, subscribe to Indoor Bike Data, and reconnect forever on drops."""
+    """Connect, subscribe to Indoor Bike Data, and reconnect forever on drops. With address set, only
+    that trainer is accepted; after a first pairing, on_connected(address, name) lets the caller pin it."""
     from bleak import BleakClient
 
     while True:
         on_state("scanning")
-        device = await find_trainer(name_hint)
+        device = await find_trainer(name_hint, address=address)
         if device is None:
             await asyncio.sleep(reconnect_delay)
             continue
@@ -114,6 +137,10 @@ async def run_reader(
                 log.info("connected to %s", device.address)
                 on_state("connected")
                 await client.start_notify(INDOOR_BIKE_DATA, lambda _, d: on_packet(bytes(d)))
+                if address is None:
+                    address = device.address.upper()  # pin for reconnects in this run too
+                    if on_connected:
+                        on_connected(address, device.name or "")
                 await disconnected.wait()
                 log.warning("trainer disconnected")
         except Exception:

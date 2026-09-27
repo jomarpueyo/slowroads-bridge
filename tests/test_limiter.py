@@ -49,7 +49,7 @@ def test_planner_kmh_units_and_cap():
 def test_actuator_counts_notches_rate_limited_and_resyncs(monkeypatch):
     a = WheelActuator(dry_run=True)
     sent = []
-    monkeypatch.setattr(a, "_scroll", lambda n: sent.append(n))
+    monkeypatch.setattr(a, "_scroll", lambda n: (sent.append(n), abs(n))[1])
     a.step_toward(30, 0.0, 4.0)          # first call homes
     assert a.current == MIN_LIMIT and sent[-1] < -24
     t = 1.0
@@ -222,3 +222,72 @@ def test_step_down_is_rate_limited_while_riding():
     assert p.update(mph(20), True, True, 1.0)[0] == 45
     assert p.update(mph(20), True, True, 2.0)[0] == 45
     assert p.update(mph(20), True, True, 3.5)[0] == 40
+
+
+
+class FakeWin:
+    """Stand-in for bridge.gamewin: a game window that can be covered or lose focus."""
+
+    def __init__(self):
+        self.game, self.focused, self.covered, self.cover_after = 1, True, False, None
+        self.checks = 0
+
+    def is_game(self, hwnd):
+        return hwnd == self.game
+
+    def find_game_window(self):
+        return self.game
+
+    def game_focused(self):
+        return self.focused
+
+    def safe_scroll_point(self, game):
+        return None if self.covered else (100, 100)
+
+    def top_level_at(self, x, y):
+        self.checks += 1
+        if self.cover_after is not None and self.checks > self.cover_after:
+            return 99  # another window slid over the point mid-scroll
+        return self.game
+
+
+def real_actuator(win, monkeypatch):
+    from bridge import limiter
+    a = WheelActuator(win=win)
+    a.dry_run = False
+
+    class U:
+        def GetCursorPos(self, p): pass
+        def SetCursorPos(self, x, y): pass
+        def mouse_event(self, *a): pass
+    a._user32 = U()
+    monkeypatch.setattr(limiter.time, "sleep", lambda s: None)
+    return a
+
+
+def test_actuator_does_not_scroll_or_count_when_game_is_covered(monkeypatch):
+    win = FakeWin()
+    a = real_actuator(win, monkeypatch)
+    assert a.home() and a.current == MIN_LIMIT
+    win.covered = True
+    a.step_toward(30, 10.0, 4.0)
+    assert a.current == MIN_LIMIT          # not delivered -> count unchanged
+    win.covered = False
+    a.step_toward(30, 10.1, 4.0)
+    assert a.current == 10
+
+
+def test_actuator_stops_counting_when_focus_leaves(monkeypatch):
+    win = FakeWin()
+    a = real_actuator(win, monkeypatch)
+    a.home()
+    win.focused = False
+    a.step_toward(30, 10.0, 4.0)
+    assert a.current == MIN_LIMIT
+
+
+def test_interrupted_homing_leaves_position_unknown(monkeypatch):
+    win = FakeWin()
+    win.cover_after = 5                    # covered after 5 of the ~28 homing notches
+    a = real_actuator(win, monkeypatch)
+    assert a.home() is False and a.current is None

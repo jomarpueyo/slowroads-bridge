@@ -69,7 +69,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--p-max", type=float, default=m.p_max, help="watts for full throttle")
     p.add_argument("--gamma", type=float, default=m.gamma, help="throttle curve exponent")
     p.add_argument("--tau", type=float, default=m.tau_s, help="power smoothing time constant, s")
-    ap.add_argument("--name", default="KICKR", help="device name fallback if FTMS UUID is not advertised")
+    ap.add_argument("--name", default=None,
+                    help="also accept a device by name when pairing (only if it doesn't advertise FTMS)")
+    ap.add_argument("--trainer", metavar="ADDRESS|pair",
+                    help="Bluetooth address of the trainer to use, or 'pair' to forget the saved one and "
+                         "pair with the first FTMS trainer found (saved to settings.json)")
     ap.add_argument("--log-dir", type=Path, default=LOG_DIR)
     ap.add_argument("--verbose", action="store_true", help="echo the event log to the console")
     args = ap.parse_args(argv)
@@ -212,7 +216,29 @@ async def run(args: argparse.Namespace) -> None:
 
         source = run_sim(parse_profile(args.sim), on_packet, on_state)
     else:
-        source = run_reader(on_packet, on_state, args.name)
+        if args.trainer and args.trainer.lower() != "pair":
+            if not settings.ADDRESS_RE.match(args.trainer):
+                raise SystemExit(f"--trainer {args.trainer!r} is not a Bluetooth address (AA:BB:CC:DD:EE:FF)")
+            address = args.trainer.upper()
+        elif args.trainer:
+            address = None
+        else:
+            address = settings.load_trainer()
+        if address:
+            log.info("using trainer %s (pinned; --trainer pair to change)", address)
+        else:
+            print("pairing: no trainer saved yet; the first FTMS trainer found will be saved\n", flush=True)
+
+        def on_paired(addr: str, name: str) -> None:
+            if args.dry_run:
+                return
+            try:
+                settings.save_trainer(addr, name)
+                log.info("paired with %s [%s]; saved to settings.json", name, addr)
+            except Exception:
+                log.exception("could not save trainer address")
+
+        source = run_reader(on_packet, on_state, args.name, address=address, on_connected=on_paired)
     try:
         await asyncio.gather(source, output_loop(), status_loop())
     except asyncio.CancelledError:

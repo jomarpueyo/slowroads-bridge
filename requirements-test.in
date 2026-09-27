@@ -1,0 +1,4 @@
+# Test suite. Lock: pip-compile --generate-hashes requirements-test.in
+-c requirements.txt
+-c requirements-calibration.txt
+pytest

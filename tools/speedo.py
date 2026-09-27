@@ -17,7 +17,7 @@ from winrt.windows.storage.streams import DataWriter
 log = logging.getLogger("bridge.speedo")
 # HUD (2026-09-27): "0.0 | MILES PER HOUR | 1 | GEAR" -- speed with one decimal, unit spelled out.
 # The HUD always shows one decimal; OCR sometimes drops the point ("29 7" for 29.7).
-NUM = r"(\d{1,3}(?:\s?[.,]\s?\d| \d\b)?)"
+NUM = r"(\d{1,3}(?: ?[.,] ?\d| \d\b)?)"  # spaces only: a tab inside a number broke float() (fuzzing)
 # Anchor on "PER": OCR mangles MILES ("NILES", "RILES", "BULES", "mlL€s") and HOUR, but reads
 # PER reliably (calibration run 2026-09-27 09:13). Unit: km/h only if KILO/KM appears.
 # With the speed limit on, a padlock icon sits between number and label and OCRs as a stray
@@ -26,6 +26,12 @@ UNIT_RE = re.compile(NUM + r"(?:\s*\|?\s*\S{1,3}(?=\s*\|))?\s*\|?\s*(\S{0,12})\s
 KMH_RE = re.compile(r"KILO|KM", re.IGNORECASE)
 GEAR_RE = re.compile(r"\b([1-9RN])\W{0,5}GEAR", re.IGNORECASE)
 MPH_TO_KMH = 1.609344
+
+
+def csv_safe(text: str) -> str:
+    """Neutralise text a spreadsheet would run as a formula (=, +, -, @, tab, CR at the start).
+    OCR text comes off the screen, so it's untrusted (docs/SECURITY.md finding 8)."""
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
 
 
 @dataclass
@@ -112,10 +118,17 @@ class SpeedoReader:
             except Exception as e:  # surface as an empty reading
                 box["error"] = repr(e)
 
+        # Abandoned (hung) OCR threads can't be killed; stop starting new ones once a few are stuck,
+        # so a wedged OCR engine can't pile up threads for a whole ride (docs/SECURITY.md finding 8).
+        stuck = [x for x in getattr(self, "_stuck", []) if x.is_alive()]
+        self._stuck = stuck
+        if len(stuck) >= 3:
+            return SpeedReading(None, None, None, "<ocr disabled: engine hung>")
         t = threading.Thread(target=work, daemon=True)
         t.start()
         t.join(timeout)
         if t.is_alive():
+            self._stuck.append(t)
             self.timeouts = getattr(self, "timeouts", 0) + 1
             self._engine = OcrEngine.try_create_from_user_profile_languages()
             return SpeedReading(None, None, None, "<ocr timeout>")

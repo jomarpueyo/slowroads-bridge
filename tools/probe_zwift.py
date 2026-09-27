@@ -6,7 +6,8 @@ trainer then sends protobuf messages. Message id 0x03 is riding data: field 1 po
 cadence (rpm), field 3 speed x100 (km/h), field 4 HR. This tool only sends the handshake: no
 resistance, gear or ERG commands. It also subscribes to FTMS 0x2AD2 for a side-by-side rate.
 
-Usage: python tools/probe_zwift.py [--seconds 30]   (pedal while it runs)
+Usage: python tools/probe_zwift.py --handshake [--seconds 30]   (pedal while it runs)
+It writes to the trainer, so it refuses to run without --handshake (docs/SECURITY.md finding 8).
 Writes logs/probe-zwift-<stamp>.log and a per-message CSV.
 """
 
@@ -22,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from bleak import BleakClient  # noqa: E402
 
+from bridge import settings  # noqa: E402
 from bridge.ftms import INDOOR_BIKE_DATA, find_trainer, parse_indoor_bike_data  # noqa: E402
 from bridge.ridelog import LOG_DIR, setup_event_log, timestamp  # noqa: E402
 
@@ -63,7 +65,7 @@ def _varint(buf, i):
 
 
 async def probe(seconds: float, stamp: str) -> None:
-    device = await find_trainer()
+    device = await find_trainer(address=settings.load_trainer())  # pinned trainer only, if paired
     if device is None:
         sys.exit("trainer not found; close other apps and wake the KICKR")
     times = defaultdict(list)
@@ -114,7 +116,13 @@ async def probe(seconds: float, stamp: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=30.0)
+    ap.add_argument("--handshake", action="store_true",
+                    help="required: confirm sending the Zwift 'RideOn' handshake to the trainer")
     args = ap.parse_args()
+    if not args.handshake:
+        sys.exit("This probe writes the Zwift 'RideOn' handshake to your trainer (no resistance, gear or ERG "
+                 "commands). Re-run with --handshake to confirm. If the trainer ever behaves oddly "
+                 "afterwards, unplug it for a few seconds.")
     stamp = timestamp()
     path = setup_event_log(LOG_DIR, stamp, verbose=True, prefix="probe-zwift")
     print(f"log: {path}")

@@ -41,7 +41,8 @@ flowchart LR
 - Wahoo KICKR CORE (other FTMS trainers will probably work but are untested)
 - Slow Roads (Steam) with a keyboard/mouse. No real controller plugged in while riding
 - Installed by the setup script: Python 3.13, Git, [ViGEmBus](https://github.com/nefarius/ViGEmBus) 1.22.0
-  (virtual controller driver, final release), and Python packages from `requirements*.txt`
+  (virtual controller driver, final release), and Python packages from the hash-locked `requirements*.txt`
+  (edit the `.in` files and re-lock with `pip-compile --generate-hashes`)
 
 ## Setup
 
@@ -50,8 +51,13 @@ Get-ChildItem -Recurse | Unblock-File
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
 
-It installs everything above with winget (the driver asks for admin), creates `.venv`, checks the
-environment and runs the tests. It is safe to run again.
+It installs everything above with winget at pinned versions (the driver asks for admin; add
+`-AllowLatest` if a pinned version is no longer offered), creates `.venv` with hash-checked packages,
+checks the environment and runs the tests. It is safe to run again.
+
+**Pairing:** the first ride connects to the first trainer advertising the fitness-machine service and saves
+its Bluetooth address in `settings.json`; after that the bridge only connects to that trainer. Use
+`ride.bat --trainer pair` to pair a different one.
 
 ## Ride
 
@@ -77,7 +83,8 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 | `settings.example.json` | Example calibration for the older `--mode speed`; the default limit mode needs none |
 
 Each ride writes to `logs/` (git-ignored): trainer packets, 20 Hz controller decisions and, from the
-recorder, the in-game speedometer and screenshots. That's what the tuning in `docs/RESEARCH.md` is based
+recorder, the in-game speedometer, screenshots of the game window (never the desktop) and a copy of the
+game's own saved settings. That's what the tuning in `docs/RESEARCH.md` is based
 on.
 
 ## Testing without a bike

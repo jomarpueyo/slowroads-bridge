@@ -4,19 +4,24 @@ on:
   push:
   pull_request:
 
+# Read-only token: the tests never write to the repository (docs/SECURITY.md finding 7).
+permissions:
+  contents: read
+
 jobs:
   pytest:
     # Windows: the OCR tools import the Windows OCR bindings (winrt). The virtual controller
     # driver (vgamepad / ViGEmBus) is not installed here; no test needs it.
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # Actions pinned to exact commits, not movable tags (finding 7).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "bleak>=0.22" "pytest>=8" -r requirements-calibration.txt
+      - name: Install test dependencies (hash-locked)
+        run: python -m pip install --require-hashes -r requirements-calibration.txt -r requirements-test.txt
       - name: Run tests
         run: python -m pytest -q

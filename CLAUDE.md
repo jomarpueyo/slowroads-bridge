@@ -11,6 +11,7 @@ Background and design history: docs/RESEARCH.md (the original V1 tech overview l
 - `bridge/ridelog.py` — ride CSV, event log, console status line
 - `bridge/__main__.py` — `python -m bridge [--dry-run] [--p-min W] [--p-max W] [--gamma G] [--verbose]`
 - `bridge/limiter.py` — limit mode (default): target -> game speed limit via mouse wheel
+- `bridge/gamewin.py` — find the game window by process; safe scroll points
 - `bridge/sim.py` — simulated trainer for `--sim` off-production tests
 - `bridge/drive.py` — target speed (gear ratio, power->speed physics) and the `--mode speed` model
 - `tools/experiments.py` — testing only: drives the live game (limiter, holds, buttons, limitrange, limitstep)
@@ -47,6 +48,9 @@ Limit mode no longer caps target at speed-mode top speed. docs/RESEARCH.md secti
 (user asked to reward hard efforts). docs/RESEARCH.md section 12.
 **Resume grace (2026-09-27):** after a coast, pedalling holds the limit 8 s (up-steps allowed); riding step-downs
 at most one per 2.5 s; two <25 W packets = coasting regardless of lingering cadence. docs/RESEARCH.md section 13.
+**Security (docs/SECURITY.md, all fixed 2026-09-27):** trainer pinned by address in settings.json (pairing needs
+FTMS UUID); wheel scrolls only onto slowroads.exe via bridge/gamewin.py; deps are hash-locked (edit *.in, re-lock
+with pip-compile --generate-hashes); settings validated; recorder stamp validated and screenshots game-only.
 The debug panel (F4) and tools/debugpanel.py are for TESTING ONLY (user: no debug screen while riding).
 Grade for tests = elevation (pos.y) vs distance integrated from panel speed.
 
