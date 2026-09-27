@@ -31,8 +31,10 @@ in the project folder.
 - **Setup:** `scripts/setup.ps1` runs end to end in hash-checked mode (6/6 environment checks, tests pass).
 - **In game:** a limit-mode `--sim` ride through the new window checks held 10 → 40 mph; the displayed
   limit matched in 11/11 samples; coasting unchanged.
-- **Pairing with the real trainer:** not yet confirmed live (the trainer was asleep during the re-test). The
-  first `ride.bat` pairs and saves it; the log shows `paired with … saved to settings.json`.
+- **Pairing with the real trainer (confirmed live):** the first ride paired and saved the KICKR
+  (`paired with KICKR CORE … saved to settings.json`); the next run scanned only for that address and
+  connected; the ride settings in the same file were kept. Negative test: pinned to a made-up address, the
+  bridge logged `no trainer found` and never connected to the real, awake KICKR.
 
 ## Checked and passed
 
