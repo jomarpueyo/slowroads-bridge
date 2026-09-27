@@ -14,6 +14,7 @@ Background and design history: docs/RESEARCH.md (the original V1 tech overview l
 - `bridge/gamewin.py` — find the game window by process; safe scroll points
 - `bridge/sim.py` — simulated trainer for `--sim` off-production tests
 - `bridge/drive.py` — target speed (gear ratio, power->speed physics) and the `--mode speed` model
+- `tools/stepping_diagrams.py` — regenerate docs/STEPPING.md, docs/stepping/*.svg, docs/stepping.html after logic changes
 - `tools/experiments.py` — testing only: drives the live game (limiter, holds, buttons, limitrange, limitstep)
 - `tools/trigger_sweep.py` — milestone 1 (virtual trigger 0→1 over 10 s)
 - `tools/calibrate_car.py` — auto-calibrate car accel/coast/brake by reading the speedometer (OCR);

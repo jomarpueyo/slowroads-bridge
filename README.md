@@ -35,6 +35,15 @@ flowchart LR
 - **Never reverses.** Braking at a stop in Slow Roads turns into reverse, so the bridge never holds a brake
   there.
 
+### How the game limit steps
+
+![Stop pedalling: the limit freezes during the coast, then eases down](docs/stepping/coast.svg)
+
+Six situations (starting, pushing hard, coasting, resuming, easing off, trainer dropout), simulated with
+the bridge's real logic: **[docs/STEPPING.md](docs/STEPPING.md)**. There's also an
+**[interactive version](https://jomarpueyo.github.io/slowroads-bridge/stepping.html)** you can step
+through second by second.
+
 ## Requirements
 
 - Windows 10/11 with Bluetooth LE
@@ -79,6 +88,7 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest -q`) |
 | `docs/RESEARCH.md` | Measurements, in-game test results and design decisions, section by section |
 | `docs/SECURITY.md` | Security review: threat model, findings and what was tested |
+| `docs/STEPPING.md`, `docs/stepping.html` | How the limit steps in six situations; regenerate with `tools/stepping_diagrams.py` |
 | `ride.bat`, `calibrate.bat`, `scripts/setup.ps1` | Launchers and one-time setup |
 | `settings.example.json` | Example calibration for the older `--mode speed`; the default limit mode needs none |
 
