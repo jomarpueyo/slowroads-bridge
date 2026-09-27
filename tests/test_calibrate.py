@@ -83,6 +83,12 @@ def test_settings_round_trip_keeps_other_keys(tmp_path):
         ("53.1 | mlL€s PER | 2 | GEAR", 53.1, "mph", "2"),
         ("48.5 | NIL-ES PER | 21 | GEAR", 48.5, "mph", None),
         ("0.0 | MILES PER YOUR | 1 | GEAR", 0.0, "mph", "1"),
+        # Speed limit on: padlock icon OCRs as a stray token (2026-09-27 10:27)
+        ("0.0 a | NILES PER HOUR | 1 | GEAR", 0.0, "mph", "1"),
+        ("37.5 a | MILES PER | 2 | GEAR | 40", 37.5, "mph", "2"),
+        # Decimal point dropped (limit-mode test 2026-09-27 10:40): was misread as 7 mph
+        ("29 7 a | MILES PER HOUR | 2 | 1 | GEAR", 29.7, "mph", "1"),  # gear bar reads as "1": gear is a hint only
+        ("34 7 | NILES PER | 2 | GEAR", 34.7, "mph", "2"),
     ],
 )
 def test_parse_hud(text, shown, unit, gear):

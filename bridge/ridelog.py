@@ -122,12 +122,17 @@ class RideLog:
         self._file.close()
 
 
-def format_status(elapsed, state, power, cadence, drive, rate, bad) -> str:
+def format_status(elapsed, state, power, cadence, drive, rate, bad, limit=None) -> str:
     m, s = divmod(int(elapsed), 60)
     p = "  --" if power is None else f"{power:4d}"
     c = " --" if cadence is None else f"{cadence:3.0f}"
+    if limit is not None:
+        value, units = limit
+        car = f"game limit {'--' if value is None else value:>3} {units}"
+    else:
+        car = f"car~ {drive.car_est_kmh:5.1f} km/h"
     return (
         f"{m:02d}:{s:02d}  {state:<10} {p} W  {c} rpm  "
-        f"target {drive.target_kmh:5.1f}  car~ {drive.car_est_kmh:5.1f} km/h  "
+        f"target {drive.target_kmh:5.1f}  {car}  "
         f"thr {drive.throttle * 100:3.0f}%  brk {drive.brake * 100:3.0f}%  {rate:3.1f} pkt/s  bad {bad}"
     )

@@ -1,4 +1,4 @@
-"""Entry point: python -m bridge [--dry-run] [--gear 3.0] [--mode speed|power] ..."""
+"""Entry point: python -m bridge [--dry-run] [--gear 3.0] [--mode limit|speed|power] ..."""
 
 import argparse
 import asyncio
@@ -8,8 +8,9 @@ import time
 from pathlib import Path
 
 from . import settings
-from .drive import DriveConfig, DriveOutput, SpeedController, trigger_value
+from .drive import DriveConfig, DriveOutput, SpeedController, bike_speed_from_power, trigger_value
 from .ftms import MalformedPacket, parse_indoor_bike_data, run_reader
+from .limiter import LimitConfig, SpeedLimitPlanner, WheelActuator, display_to_kmh
 from .mapper import MapperConfig, ThrottleMapper
 from .pad import NullPad, VirtualPad
 from .ridelog import ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, format_status, setup_event_log, timestamp
@@ -23,9 +24,20 @@ def parse_args(argv=None) -> argparse.Namespace:
     saved = settings.load()
     ap = argparse.ArgumentParser(prog="bridge", description="KICKR CORE -> Slow Roads throttle and brake")
     ap.add_argument("--dry-run", action="store_true", help="read and log only; no virtual pad")
-    ap.add_argument("--mode", choices=["speed", "power"], default="speed",
-                    help="speed: follow trainer speed x gear with throttle+brake (default); "
-                         "power: legacy watts->throttle, no brake")
+    lc = LimitConfig()
+    ap.add_argument("--mode", choices=["limit", "speed", "power"], default="limit",
+                    help="limit: set the game's speed limit to the target and let the game hold it "
+                         "(default; needs in-game speed control ON in limit mode); "
+                         "speed: open-loop model with throttle+brake; power: legacy watts->throttle")
+    ap.add_argument("--speed-source", choices=["trainer", "power"], default="trainer",
+                    help="trainer: KICKR flywheel speed (gear x cadence); power: road-bike physics from watts")
+    ap.add_argument("--rider-kg", type=float, default=85.0, help="rider + bike mass for --speed-source power")
+    lg = ap.add_argument_group("limit mode")
+    lg.add_argument("--units", choices=["mph", "km/h"], default=lc.units, help="the game's speed units")
+    lg.add_argument("--drive-throttle", type=float, default=lc.drive_throttle,
+                    help="throttle held while pedalling (the game caps speed at the limit)")
+    ap.add_argument("--sim", metavar="PROFILE",
+                    help='test without the bike: "seconds:bike_kmh,..." e.g. "0:0,5:15,40:15,55:0"')
     g = ap.add_argument_group("speed mode (defaults come from settings.json when present)")
     g.add_argument("--gear", type=float, default=d.gear_ratio, help="car km/h per bike km/h")
     g.add_argument("--accel", type=float, default=d.accel_kmh_s, help="car km/h/s at full throttle (calibrate)")
@@ -69,15 +81,21 @@ async def run(args: argparse.Namespace) -> None:
         log.warning("could not write %s", ACTIVE_RIDE)
     mapper = ThrottleMapper(MapperConfig(p_min=args.p_min, p_max=args.p_max, gamma=args.gamma, tau_s=args.tau))
     controller = SpeedController(drive_config(args))
+    planner = SpeedLimitPlanner(LimitConfig(units=args.units, drive_throttle=args.drive_throttle))
+    actuator = WheelActuator(dry_run=args.dry_run)
     pad = NullPad() if args.dry_run else VirtualPad()
     state = {"conn": "starting", "power": None, "cadence": None,
-             "out": DriveOutput(0.0, 0.0, 0.0, 0.0)}
-    log.info("start dry_run=%s mode=%s deadzone=%.2f drive=%s mapper=%s",
-             args.dry_run, args.mode, args.deadzone, controller.config, mapper.config)
+             "out": DriveOutput(0.0, 0.0, 0.0, 0.0), "limit": None}
+    log.info("start dry_run=%s mode=%s speed_source=%s units=%s deadzone=%.2f drive=%s limit=%s mapper=%s sim=%s",
+             args.dry_run, args.mode, args.speed_source, args.units, args.deadzone, controller.config,
+             planner.config, mapper.config, args.sim)
     c = controller.config
+    how = ("game holds speed at the limit: speed control ON, limit mode, Slow Roads focused"
+           if args.mode == "limit" else f"top {c.top_speed_kmh:.0f} km/h, max throttle {c.max_throttle}")
     print(f"ride CSV:  {ride.path}\nevent log: {event_path}\n"
-          f"settings:  gear {c.gear_ratio}  top {c.top_speed_kmh:.0f} km/h  max throttle {c.max_throttle}"
-          f"  ({'settings.json' if settings.load() else 'built-in defaults - run tools/calibrate_car.py'})\n"
+          f"mode:      {args.mode} ({how})\n"
+          f"settings:  gear {c.gear_ratio}, speed from {args.speed_source}"
+          f"  ({'settings.json' if settings.load() else 'built-in defaults'})\n"
           f"Ctrl+C to stop\n", flush=True)
 
     def on_state(s: str) -> None:
@@ -94,7 +112,9 @@ async def run(args: argparse.Namespace) -> None:
             return
         if bike.power_w is not None:
             mapper.add_sample(bike.power_w, now)
-        if bike.speed_kmh is not None:
+        if args.speed_source == "power":
+            controller.set_bike_speed(bike_speed_from_power(mapper.smoothed, mass_kg=args.rider_kg))
+        elif bike.speed_kmh is not None:
             controller.set_bike_speed(bike.speed_kmh)
         state["power"], state["cadence"] = bike.power_w, bike.cadence_rpm
         out = state["out"]
@@ -105,7 +125,15 @@ async def run(args: argparse.Namespace) -> None:
         while True:
             now = time.monotonic()
             active = not mapper.is_stale(now)
-            if args.mode == "speed":
+            if args.mode == "limit":
+                target = controller.step(now - last, active).target_kmh
+                desired, throttle = planner.update(target, active)
+                actuator.step_toward(desired, now, planner.config.max_notches_per_s)
+                state["limit"] = actuator.current
+                limit_kmh = 0.0 if actuator.current is None else display_to_kmh(actuator.current, args.units)
+                # In limit mode car_est_kmh logs the limit the game is holding the car to.
+                out = DriveOutput(throttle, 0.0, target, limit_kmh)
+            elif args.mode == "speed":
                 out = controller.step(now - last, active)
             else:
                 out = DriveOutput(mapper.throttle(now), 0.0, 0.0, 0.0)
@@ -123,14 +151,27 @@ async def run(args: argparse.Namespace) -> None:
             conn = state["conn"]
             if conn == "connected" and mapper.is_stale(now):
                 conn = "no data"
+            if args.mode == "limit" and not actuator.game_focused():
+                conn += " (game not focused)"
             line = format_status(now - ride.start, conn, state["power"], state["cadence"],
-                                 state["out"], ride.packet_rate(now), ride.bad_packets)
+                                 state["out"], ride.packet_rate(now), ride.bad_packets,
+                                 limit=None if args.mode != "limit" else (state["limit"], args.units))
             print("\r" + line, end="", flush=True)
             await asyncio.sleep(1.0)
 
+    if args.sim:
+        from .sim import parse_profile, run_sim
+
+        source = run_sim(parse_profile(args.sim), on_packet, on_state)
+    else:
+        source = run_reader(on_packet, on_state, args.name)
     try:
-        await asyncio.gather(run_reader(on_packet, on_state, args.name), output_loop(), status_loop())
+        await asyncio.gather(source, output_loop(), status_loop())
+    except asyncio.CancelledError:
+        if not args.sim:
+            raise
     finally:
+        pad.close()
         pad.close()
         ride.close()
         drive_log.close()

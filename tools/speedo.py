@@ -16,10 +16,13 @@ from winrt.windows.storage.streams import DataWriter
 
 log = logging.getLogger("bridge.speedo")
 # HUD (2026-09-27): "0.0 | MILES PER HOUR | 1 | GEAR" -- speed with one decimal, unit spelled out.
-NUM = r"(\d{1,3}(?:\s?[.,]\s?\d)?)"
+# The HUD always shows one decimal; OCR sometimes drops the point ("29 7" for 29.7).
+NUM = r"(\d{1,3}(?:\s?[.,]\s?\d| \d\b)?)"
 # Anchor on "PER": OCR mangles MILES ("NILES", "RILES", "BULES", "mlL€s") and HOUR, but reads
 # PER reliably (calibration run 2026-09-27 09:13). Unit: km/h only if KILO/KM appears.
-UNIT_RE = re.compile(NUM + r"\s*\|?\s*(\S{0,12})\s*PER\b", re.IGNORECASE)
+# With the speed limit on, a padlock icon sits between number and label and OCRs as a stray
+# token ("0.0 a | NILES PER"), so allow up to a couple of short tokens before the unit word.
+UNIT_RE = re.compile(NUM + r"(?:\s*\|?\s*\S{1,3}(?=\s*\|))?\s*\|?\s*(\S{0,12})\s*PER\b", re.IGNORECASE)
 KMH_RE = re.compile(r"KILO|KM", re.IGNORECASE)
 GEAR_RE = re.compile(r"\b([1-9RN])\W{0,5}GEAR", re.IGNORECASE)
 MPH_TO_KMH = 1.609344
@@ -47,7 +50,10 @@ def parse_speed(text: str) -> SpeedReading:
     if not m:
         return SpeedReading(None, None, gear, text)
     unit = "km/h" if KMH_RE.search(m.group(2)) else "mph"
-    value = float(m.group(1).replace(",", ".").replace(" ", ""))
+    raw = m.group(1).replace(",", ".")
+    if "." not in raw and " " in raw:
+        raw = raw.replace(" ", ".", 1)  # "29 7" -> 29.7
+    value = float(raw.replace(" ", ""))
     return SpeedReading(value, unit, gear, text)
 
 

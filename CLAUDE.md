@@ -11,7 +11,10 @@ Design doc: "Slow Roads × KICKR CORE Bridge — V1 Tech Overview" (Claude Docs,
 - `bridge/pad.py` — vgamepad output; `NullPad` for `--dry-run`
 - `bridge/ridelog.py` — ride CSV, event log, console status line
 - `bridge/__main__.py` — `python -m bridge [--dry-run] [--p-min W] [--p-max W] [--gamma G] [--verbose]`
-- `bridge/drive.py` — speed-follow controller (gear ratio, car-speed estimate, throttle + brake)
+- `bridge/limiter.py` — limit mode (default): target -> game speed limit via mouse wheel
+- `bridge/sim.py` — simulated trainer for `--sim` off-production tests
+- `bridge/drive.py` — target speed (gear ratio, power->speed physics) and the `--mode speed` model
+- `tools/experiments.py` — testing only: drives the live game (limiter, holds, buttons, limitrange, limitstep)
 - `tools/trigger_sweep.py` — milestone 1 (virtual trigger 0→1 over 10 s)
 - `tools/calibrate_car.py` — auto-calibrate car accel/coast/brake by reading the speedometer (OCR);
   `--watch N` only logs the speedometer. Writes logs/calibrate-*.csv + .log with bridge flags.
@@ -25,6 +28,16 @@ Design doc: "Slow Roads × KICKR CORE Bridge — V1 Tech Overview" (Claude Docs,
 - `scripts/setup.ps1` — one-time init (winget: Python 3.13, Git, ViGEmBus; venv; tests)
 
 User-facing how-to is QUICKSTART.md (ride.bat, calibrate.bat, settings.json). Keep it current.
+Research, prior art (GTBike V etc.) and the ranked improvement list are in docs/RESEARCH.md.
+**Default is now `--mode limit` (bridge/limiter.py), verified in-game 2026-09-27 10:27–10:47.**
+The ride 09:29 showed the open-loop `--mode speed` estimate is wrong (38–45 km/h vs 75–97 in game).
+Limit mode sets the game's own speed limit (speed control ON, limit/"max" mode) with the mouse
+wheel (5 display units/notch, range 5–125, counted, re-synced by over-scrolling at the floor) and
+holds throttle 0.6; the game caps and actively slows the car. Facts: gamepad input only reaches the
+game while its window is focused; default pad X cycles AUTOSTEER/AUTOSPEED/AUTODRIVE, A toggles the
+assist, D-pad left/right change scene/weather; no default pad button changes the limit.
+Off-production tests: tools/experiments.py and `python -m bridge --sim "t:kmh,..."` (bridge/sim.py).
+Results in docs/RESEARCH.md §8.
 
 ## Ride-time data (for tuning after a ride; same <stamp> across files)
 - Bridge (never reads the screen): ride-*.csv (packets), drive-*.csv (20 Hz controller ticks),

@@ -50,6 +50,25 @@ def trigger_value(throttle: float, deadzone: float) -> float:
     return deadzone + (1.0 - deadzone) * min(throttle, 1.0)
 
 
+def bike_speed_from_power(watts: float, mass_kg: float = 85.0, cda: float = 0.32, crr: float = 0.004,
+                          grade: float = 0.0, rho: float = 1.225, eta: float = 0.97) -> float:
+    """Steady road-bike speed (km/h) for a power, from the standard cycling equation:
+    P = v (m g (Crr cos a + sin a) + 0.5 rho CdA v^2) / eta. The KICKR's own speed is flywheel
+    speed (gear x cadence), so this is what makes effort, not gear choice, set the pace
+    (GTBike V computes speed the same way; docs/RESEARCH.md). 100 W flat ~ 25.9 km/h."""
+    if watts <= 0:
+        return 0.0
+    import math
+
+    a = math.atan(grade)
+    lo, hi = 0.0, 40.0  # m/s
+    for _ in range(60):
+        v = (lo + hi) / 2
+        need = v * (mass_kg * 9.81 * (crr * math.cos(a) + math.sin(a)) + 0.5 * rho * cda * v * v) / eta
+        lo, hi = (v, hi) if need < watts else (lo, v)
+    return lo * 3.6
+
+
 def car_accel(v_kmh: float, throttle: float, brake: float, c: DriveConfig) -> float:
     """Car model, km/h per second. Shared by the controller and tools/calibrate_car.py.
     Calibration 2026-09-27 09:20 (automatic): coasting shed ~23 km/h/s near 90 km/h but under
