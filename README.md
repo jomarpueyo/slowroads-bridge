@@ -72,6 +72,7 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 | `tools/` | Checks and testing tools: ride summaries and replays, trainer probes, calibration, and **testing-only** screen-OCR experiments that drive the game (`experiments.py`, `speedo.py`, `debugpanel.py`, `ride_recorder.py`) |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest -q`) |
 | `docs/RESEARCH.md` | Measurements, in-game test results and design decisions, section by section |
+| `docs/SECURITY.md` | Security review: threat model, findings and what was tested |
 | `ride.bat`, `calibrate.bat`, `scripts/setup.ps1` | Launchers and one-time setup |
 | `settings.example.json` | Example calibration for the older `--mode speed`; the default limit mode needs none |
 
