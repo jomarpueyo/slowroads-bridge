@@ -5,6 +5,7 @@ import asyncio
 import logging
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from . import settings
@@ -12,8 +13,11 @@ from .drive import DriveConfig, DriveOutput, SpeedController, VirtualBike, bike_
 from .ftms import MalformedPacket, parse_indoor_bike_data, run_reader
 from .limiter import LimitConfig, SpeedLimitPlanner, WheelActuator, display_to_kmh
 from .mapper import MapperConfig, ThrottleMapper
+from .crashreport import run_main
 from .pad import NullPad, VirtualPad
-from .ridelog import ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, format_status, setup_event_log, timestamp
+from .summary import write_summary
+from .ridelog import (ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, close_event_log, format_status,
+                      setup_event_log, timestamp)
 
 log = logging.getLogger("bridge")
 OUTPUT_HZ = 20
@@ -93,15 +97,29 @@ def drive_config(args: argparse.Namespace) -> DriveConfig:
     )
 
 
-async def run(args: argparse.Namespace) -> None:
+PLAUSIBLE = {"power_w": (0, 3000), "cadence_rpm": (0, 250), "speed_kmh": (0, 120)}
+
+
+def plausible(bike):
+    """Readings no rider or trainer can produce (corrupt or foreign packets) become 'not reported',
+    so they can't drive the car. Returns the same object when everything is plausible."""
+    bad = {k: None for k, (lo, hi) in PLAUSIBLE.items()
+           if getattr(bike, k) is not None and not lo <= getattr(bike, k) <= hi}
+    return replace(bike, **bad) if bad else bike
+
+
+async def run(args: argparse.Namespace, source_fn=None) -> None:
+    """One ride. source_fn(on_packet, on_state) is an optional coroutine function supplying trainer
+    packets instead of Bluetooth (tests and fuzzing); the ride ends when the source returns."""
     stamp = timestamp()
     event_path = setup_event_log(args.log_dir, stamp, args.verbose)
     ride = RideLog(args.log_dir, stamp)
     drive_log = DriveLog(args.log_dir, stamp, ride.start)
+    marker = Path(args.log_dir) / ACTIVE_RIDE.name  # next to the logs (tools/ride_recorder.py follows it)
     try:
-        ACTIVE_RIDE.write_text(stamp, encoding="utf-8")  # lets tools/ride_recorder.py follow along
+        marker.write_text(stamp, encoding="utf-8")
     except OSError:
-        log.warning("could not write %s", ACTIVE_RIDE)
+        log.warning("could not write %s", marker)
     mapper = ThrottleMapper(MapperConfig(p_min=args.p_min, p_max=args.p_max, gamma=args.gamma, tau_s=args.tau))
     controller = SpeedController(drive_config(args))
     planner = SpeedLimitPlanner(LimitConfig(
@@ -137,6 +155,10 @@ async def run(args: argparse.Namespace) -> None:
             log.warning("malformed packet %s: %s", raw.hex(" "), e)
             ride.write(now, raw, error=str(e))
             return
+        logged, bike = bike, plausible(bike)  # the ride CSV keeps what the trainer sent
+        if bike is not logged and not state.get("warned_implausible"):
+            state["warned_implausible"] = True
+            log.warning("ignoring impossible readings (e.g. %s); further ones are not logged", raw.hex(" "))
         if bike.power_w is not None:
             mapper.add_sample(bike.power_w, now)
         # Power for the virtual bike. The KICKR sometimes reports 0 W mid-stroke with cadence still
@@ -157,7 +179,7 @@ async def run(args: argparse.Namespace) -> None:
         low = (bike.power_w or 0) < planner.config.coast_watts
         state["low_n"] = state.get("low_n", 0) + 1 if low else 0
         out = state["out"]
-        ride.write(now, raw, bike, mapper.smoothed, out.throttle, drive=out)
+        ride.write(now, raw, logged, mapper.smoothed, out.throttle, drive=out)
 
     async def output_loop() -> None:
         last = time.monotonic()
@@ -211,7 +233,9 @@ async def run(args: argparse.Namespace) -> None:
             print("\r" + line, end="", flush=True)
             await asyncio.sleep(1.0)
 
-    if args.sim:
+    if source_fn is not None:
+        source = source_fn(on_packet, on_state)
+    elif args.sim:
         from .sim import parse_profile, run_sim
 
         source = run_sim(parse_profile(args.sim), on_packet, on_state)
@@ -239,30 +263,39 @@ async def run(args: argparse.Namespace) -> None:
                 log.exception("could not save trainer address")
 
         source = run_reader(on_packet, on_state, args.name, address=address, on_connected=on_paired)
+    tasks = [asyncio.ensure_future(source), asyncio.ensure_future(output_loop()),
+             asyncio.ensure_future(status_loop())]
     try:
-        await asyncio.gather(source, output_loop(), status_loop())
-    except asyncio.CancelledError:
-        if not args.sim:
-            raise
+        # The ride ends when the data source finishes (simulated/fuzzed rides) or on Ctrl+C. An error in
+        # any loop ends it too and is re-raised, so crash reporting sees it instead of it being swallowed.
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in done:
+            t.result()
     finally:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         pad.close()
         ride.close()
         drive_log.close()
         try:
-            ACTIVE_RIDE.unlink()
+            marker.unlink()
         except OSError:
             pass
         log.info("stop packets=%d bad=%d", ride.packets, ride.bad_packets)
         print(f"\n{ride.packets} packets ({ride.bad_packets} bad) -> {ride.path}")
+        try:  # cycling metrics from the trainer's data only, never the game
+            text, saved = write_summary(ride.path)
+            print("\n" + text + (f"\nsaved: {saved}" if saved else ""), flush=True)
+        except Exception:
+            log.exception("could not summarize the ride")
+        close_event_log()
 
 
 def main(argv=None) -> int:
-    try:
-        asyncio.run(run(parse_args(argv)))
-    except KeyboardInterrupt:
-        pass
+    asyncio.run(run(parse_args(argv)))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main(main, "bridge"))

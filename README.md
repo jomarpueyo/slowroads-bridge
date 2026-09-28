@@ -80,7 +80,12 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
 2. Double-click **`ride.bat`**.
 3. In Slow Roads: assist **AUTOSTEER**, gearbox **Automatic**, **speed control on in limit mode** (the
    padlock by the speedometer), and keep the game window focused.
-4. Pedal. Press Ctrl+C in the bridge window to stop.
+4. Pedal. Press Ctrl+C in the bridge window to stop. You get a ride summary from the trainer's data
+   (time, distance, average/normalized power, best efforts, kJ, cadence), saved in `logs/summary-*.txt`.
+
+Something broke? Double-click **`report.bat`** and attach the zip to a
+[new issue](https://github.com/jomarpueyo/slowroads-bridge/issues/new?template=bug_report.md). It holds
+the crash report and recent logs with Bluetooth addresses, user/computer names and e-mail removed.
 
 The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …) and troubleshooting are in
 **[QUICKSTART.md](QUICKSTART.md)**.
@@ -89,13 +94,13 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 
 | Path | What |
 | --- | --- |
-| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `pad.py` (virtual controller), `ridelog.py` (logs), `sim.py` (scripted test rides) |
+| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `pad.py` (virtual controller), `ridelog.py` (logs), `summary.py` (ride summary), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
 | `tools/` | Checks and testing tools: ride summaries and replays, trainer probes, calibration, and **testing-only** screen-OCR experiments that drive the game (`experiments.py`, `speedo.py`, `debugpanel.py`, `ride_recorder.py`) |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest -q`) |
 | `docs/RESEARCH.md` | Measurements, in-game test results and design decisions, section by section |
 | `docs/SECURITY.md` | Security review: threat model, findings and what was tested |
 | `docs/STEPPING.md`, `docs/stepping.html` | How the limit steps in six situations; regenerate with `tools/stepping_diagrams.py` |
-| `ride.bat`, `calibrate.bat`, `scripts/setup.ps1` | Launchers and one-time setup |
+| `ride.bat`, `report.bat`, `calibrate.bat`, `scripts/setup.ps1` | Launchers and one-time setup |
 | `settings.example.json` | Example calibration for the older `--mode speed`; the default limit mode needs none |
 
 Each ride writes to `logs/` (git-ignored): trainer packets, 20 Hz controller decisions and, from the
@@ -110,6 +115,10 @@ on.
 ```
 
 This plays a scripted ride (`seconds:km/h:watts`) through the real bridge and the running game.
+
+`tests/test_fuzz_bridge.py` (part of the suite) and `tools/fuzz_bridge.py --minutes 10` feed corrupt,
+extreme, flooding, silent and dropping-out trainer data through the real bridge loop in dry-run mode and
+check that it never crashes, the controls stay in range, and the logs and summary are written.
 
 ## License
 

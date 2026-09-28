@@ -38,6 +38,15 @@ def setup_event_log(log_dir: Path, stamp: str, verbose: bool = False, prefix: st
     return path
 
 
+def close_event_log() -> None:
+    """Close the handlers setup_event_log() opened (lets repeated runs in one process, e.g. tests and
+    fuzzing, release their log files)."""
+    root = logging.getLogger()
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+        h.close()
+
+
 def timestamp() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 

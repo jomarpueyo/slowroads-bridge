@@ -24,6 +24,10 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    limit holds where it was for 8 s while your watts build, then eases down a step at a time if you're
    riding easier than before. It never reverses.
 5. Press **Ctrl+C** in the bridge window to finish. The recorder stops on its own.
+6. The bridge prints a **ride summary** worked out from the trainer's data only (never the game): time
+   (total and moving), distance and speed, average/max/normalized power, best 5 s / 1 min / 5 min power,
+   work (kJ, roughly kcal) and cadence. It is saved as `logs/summary-*.txt`. Print any ride again with
+   `.venv\Scripts\python -m bridge.summary logs\ride-YYYYMMDD-HHMMSS.csv` (no file = the latest ride).
 
 **Don't touch the mouse wheel over the game during a ride.** The bridge changes the limit by
 scrolling, and it counts its own scrolls. It briefly moves the cursor to the left side of the
@@ -83,6 +87,9 @@ recordings are how we measure that.
 | `logs/ride-*.csv` | Every trainer packet: power, cadence, bike speed, raw bytes |
 | `logs/drive-*.csv` | Every controller tick (20 Hz): target, throttle, brake; `car_est_kmh` is the game limit set (limit mode) or the model estimate (speed mode) |
 | `logs/bridge-*.log` | Connects, drops, errors, settings used |
+| `logs/summary-*.txt` | Ride summary (trainer data only) |
+| `logs/crash-*.txt` | Written if something crashes; personal details already removed |
+| `logs/report-*.zip` | Made by `report.bat` to send to the developer |
 | `logs/speed-*.csv` | Recorder: speedometer read from the screen (~5 Hz) |
 | `logs/shots-*/` | Recorder: game-window screenshot every 5 s (only while the game is in front) |
 | `logs/game-*-start/`, `-end/` | Recorder: copy of the game's saved settings (vehicle, units) |
@@ -104,7 +111,10 @@ Run these from this folder in PowerShell.
 | `.venv\Scripts\python tools\trigger_sweep.py` | Does the game respond to the virtual controller? |
 | `.venv\Scripts\python tools\probe_rates.py` | How often the KICKR sends each data stream |
 | `.venv\Scripts\python tools\experiments.py limiter --focus` | Testing only: game experiments (`limiter`, `holds`, `buttons`, `limitrange`, `limitstep`). Takes over the game window and drives the car |
-| `.venv\Scripts\python -m pytest -q` | Test suite |
+| `report.bat` | Bundle crash reports, recent logs and the environment check into one zip to send to the developer |
+| `.venv\Scripts\python -m bridge.summary` | Ride summary (trainer data only) for the last ride, or pass a `ride-*.csv` |
+| `.venv\Scripts\python -m pytest -q` | Test suite (includes a short fuzz test of the whole bridge) |
+| `.venv\Scripts\python tools\fuzz_bridge.py --minutes 10` | Testing only: long fuzz campaign, random corrupt trainer data through the real bridge (dry run) |
 
 ## New PC or broken install
 
@@ -117,6 +127,12 @@ This installs Python 3.13, Git and the ViGEmBus driver (asks for admin), creates
 packages, checks the environment and runs the tests. It is safe to run again.
 
 ## Troubleshooting
+
+**If anything crashes**, the window says so and saves `logs/crash-*.txt`. Double-click **`report.bat`**:
+it bundles the crash reports, recent logs, latest ride and an environment check into
+`logs/report-*.zip` and opens the folder. Bluetooth addresses, your Windows user name, home folder,
+computer name and e-mail addresses are removed; no screenshots, game settings or `settings.json` go in.
+Attach the zip to a [new issue](https://github.com/jomarpueyo/slowroads-bridge/issues/new?template=bug_report.md).
 
 | Symptom | Fix |
 | --- | --- |

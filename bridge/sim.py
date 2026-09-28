@@ -69,5 +69,5 @@ async def run_sim(profile, on_packet: Callable[[bytes], None], on_state: Callabl
         if t > end + 2:
             on_state("sim done")
             log.info("simulated profile finished")
-            raise asyncio.CancelledError
+            return  # the bridge ends the ride when its data source finishes
         await asyncio.sleep(1.0)

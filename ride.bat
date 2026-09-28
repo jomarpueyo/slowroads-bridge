@@ -13,4 +13,5 @@ start "slowroads recorder" /min ".venv\Scripts\python.exe" tools\ride_recorder.p
 ".venv\Scripts\python.exe" -m bridge %*
 echo.
 echo Ride finished. Logs are in %~dp0logs  (ride-, drive-, bridge-, speed-, shots-)
+echo Something went wrong? Double-click report.bat and attach the zip it makes to a GitHub issue.
 pause

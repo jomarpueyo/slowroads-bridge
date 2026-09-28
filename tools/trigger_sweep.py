@@ -46,4 +46,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from bridge.crashreport import run_main
+
+    sys.exit(run_main(main, "trigger_sweep"))

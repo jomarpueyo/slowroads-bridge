@@ -60,5 +60,9 @@ def summarize(path: Path) -> int:
 
 
 if __name__ == "__main__":
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else newest_ride(LOG_DIR)
-    sys.exit(summarize(target))
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from bridge.crashreport import run_main
+
+    sys.exit(run_main(lambda: summarize(Path(sys.argv[1]) if len(sys.argv) > 1 else newest_ride(LOG_DIR)), "summarize_ride"))

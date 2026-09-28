@@ -13,6 +13,17 @@ Background and design history: docs/RESEARCH.md (the original V1 tech overview l
 - `bridge/limiter.py` — limit mode (default): target -> game speed limit via mouse wheel
 - `bridge/gamewin.py` — find the game window by process; safe scroll points
 - `bridge/sim.py` — simulated trainer for `--sim` off-production tests
+- `bridge/summary.py` — ride summary from trainer packets only (never the game); printed + saved as
+  logs/summary-*.txt when a ride ends; `python -m bridge.summary [ride.csv]`
+- `bridge/crashreport.py` — every entry point (bridge + all tools) runs via `run_main(main, tool)`:
+  unexpected errors -> redacted logs/crash-<tool>-*.txt (MAC, home, user, host, email removed; temp-folder
+  fallback) + message pointing to report.bat. New tools must use it too.
+- `bridge/report.py` / `report.bat` — redacted zip (crash reports, logs, latest ride/drive CSV, summaries,
+  environment check) for GitHub issues; never screenshots, game-state copies or settings.json
+- `bridge.__main__.run(args, source_fn=...)` — inject a packet source (tests/fuzz_harness.py); the ride
+  ends when it returns. `plausible()` drops impossible readings (power 0-3000 W, cadence 0-250, speed 0-120)
+  before control; the ride CSV keeps raw values.
+- `tools/fuzz_bridge.py` — long fuzz campaign (testing only); tests/test_fuzz_bridge.py is the short one
 - `bridge/drive.py` — target speed (gear ratio, power->speed physics) and the `--mode speed` model
 - `tools/stepping_diagrams.py` — regenerate docs/STEPPING.md, docs/stepping/*.svg, docs/stepping.html after logic changes
 - `tools/experiments.py` — testing only: drives the live game (limiter, holds, buttons, limitrange, limitstep)
