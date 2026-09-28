@@ -122,6 +122,7 @@ async def run_reader(
     that trainer is accepted; after a first pairing, on_connected(address, name) lets the caller pin it."""
     from bleak import BleakClient
 
+    failures = 0
     while True:
         on_state("scanning")
         device = await find_trainer(name_hint, address=address)
@@ -129,21 +130,51 @@ async def run_reader(
             await asyncio.sleep(reconnect_delay)
             continue
         disconnected = asyncio.Event()
+        subscribed = False
         try:
             on_state("connecting")
             async with BleakClient(
                 device, disconnected_callback=lambda _: disconnected.set()
             ) as client:
                 log.info("connected to %s", device.address)
+                if client.services.get_characteristic(INDOOR_BIKE_DATA) is None:
+                    # 2026-09-28: the KICKR (fw 1.5.36) connected but offered only its basic services
+                    # (1800/1801/180a), no FTMS; seen when something else holds it or it needs a
+                    # power-cycle. Say so plainly and retry instead of logging a traceback.
+                    seen = sorted({s.uuid[4:8] for s in client.services})
+                    log.warning("trainer connected but isn't offering its fitness data (FTMS); services "
+                                "seen: %s. Another app may be holding it, or it needs a power-cycle.", seen)
+                    on_state("no FTMS data")
+                    raise ConnectionError("trainer offers no FTMS Indoor Bike Data")
                 on_state("connected")
                 await client.start_notify(INDOOR_BIKE_DATA, lambda _, d: on_packet(bytes(d)))
+                subscribed = True
+                failures = 0
                 if address is None:
                     address = device.address.upper()  # pin for reconnects in this run too
                     if on_connected:
                         on_connected(address, device.name or "")
                 await disconnected.wait()
                 log.warning("trainer disconnected")
+        except asyncio.CancelledError:
+            task = asyncio.current_task()
+            if task is not None and task.cancelling():
+                raise  # the bridge itself is shutting down (Ctrl+C, end of --sim)
+            # bleak on Windows reports a WinRT operation cancelled by the OS or the trainer (e.g. the
+            # link dropped during service discovery) as CancelledError. Friend's test 2026-09-27
+            # 20:23: this escaped the handler below and crashed the bridge instead of retrying.
+            log.warning("connection to %s was cancelled by Windows/the trainer; retrying", device.address)
+        except ConnectionError as e:
+            log.debug("connect attempt failed: %s", e)
         except Exception:
             log.exception("bluetooth error")
+        if not subscribed:
+            failures += 1
+            if failures == 3:
+                msg = ("can't get data from the trainer after 3 tries. Close Zwift, the Wahoo app and any "
+                       "phone app connected to it; if it's paired in Windows Bluetooth settings, remove it "
+                       "there; then power-cycle the trainer (unplug it for 10 s). Still retrying...")
+                log.warning(msg)
+                print(f"\n{msg}", flush=True)
         on_state("disconnected")
         await asyncio.sleep(reconnect_delay)

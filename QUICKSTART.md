@@ -122,6 +122,7 @@ packages, checks the environment and runs the tests. It is safe to run again.
 | --- | --- |
 | `.venv\Scripts\python` not found | You're in the wrong folder: `cd` into `slowroads-bridge` first, or use the `.bat` files |
 | Stuck on `scanning` | Wake the KICKR. Close the Wahoo app and Zwift (they hold the connection). New or replaced trainer: `ride.bat --trainer pair` |
+| Status says `no FTMS data`, or the window prints "can't get data from the trainer after 3 tries" | The trainer connected but isn't offering its fitness data. Close Zwift, the Wahoo app and any **phone** app connected to it; remove it from Windows Bluetooth settings if it's paired there; then unplug the trainer for 10 s. The bridge keeps retrying on its own |
 | Status says `no data` | The trainer is connected but sending nothing for 3 s. Throttle is held at 0. Pedal |
 | Car doesn't move | Click into the game window (the controller only works while it's focused). Start the bridge before the game. Unplug real controllers |
 | Car runs away | Speed control is off or in cruise mode: turn on the padlock, in limit mode. Or the gearbox is Manual: set Automatic |

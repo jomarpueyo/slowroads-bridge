@@ -246,7 +246,6 @@ async def run(args: argparse.Namespace) -> None:
             raise
     finally:
         pad.close()
-        pad.close()
         ride.close()
         drive_log.close()
         try:
