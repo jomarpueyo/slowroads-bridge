@@ -342,8 +342,44 @@ because the game ignores scrolls below 5. A menu opened mid-ride can still leave
 next stop. Detecting the menu without reading the screen is untested; one idea is whether the game shows
 the mouse cursor only in menus (GetCursorInfo).
 
+## 15. Steam forums and patch notes (read 2026-09-29)
+
+Read: the General Discussions search (bike, trainer, zwift, telemetry, exercise, simhub, cruise, speed limit,
+force feedback, keybind, uphill, modding), the threads below, and all news posts up to patch 1.0.2. The
+developer (Anslo) answers on the forum and posts day-to-day progress in the Discord #dev-log channel.
+
+**Nobody has raised trainers, cycling, Zwift, telemetry or SimHub** (no results for any of them). This
+bridge seems to be the first fitness integration, and nobody has asked the developer for telemetry yet.
+
+**Findings that affect the bridge:**
+
+| # | Finding | Source | Impact | Action |
+| --- | --- | --- | --- | --- |
+| 1 | **The mouse wheel does not change the speed limit in 3rd-person camera** | Bug report by dr.moon, 2026-09-28 | Limit mode silently stops working; the bridge keeps counting notches the game ignores (the same failure as the menu in section 14) | Ride in a first-person/interior camera. Documented in QUICKSTART. The leaving-the-floor re-home fixes the count after you switch back |
+| 2 | **1.1.0 target: "mouse upgrades... possibly pointer-lock steering"** | Roadmap post, 2026-09-24 | Pointer lock captures the mouse. The bridge's SetCursorPos + wheel scrolling may stop working or scroll something else | **Re-test limit mode after every update** (`tools/experiments.py limitstep`). Try the Steam "staged" beta branch early if it's offered for the full game |
+| 3 | **Only the first 4 gamepads the OS reports** are seen (web-based engine, i.e. the browser Gamepad API) | Developer reply, "more than just 4 connected controllers", 2026-09-27 | With 4 other controllers (wheel, pedals, button box...), the virtual pad is ignored | Troubleshooting note: unplug extra controllers. This also explains the known facts that input only works while focused and that the first press wakes the pad (Gamepad API behaviour) |
+| 4 | 1.1.0 target: "controller upgrades to solve shifts in controller index leading to incorrect mappings" | Roadmap post | Good for the virtual pad; could change mappings | Re-check that the right trigger is still the throttle after 1.1.0 |
+| 5 | **Force feedback in 1.1.0 via a new "device input bridge"** handling two-way communication, maybe injecting input from any number of devices | Developer replies, 2026-09-27/28 | The first time the game talks back to a device. The natural place for speed/grade output | **Ask the developer** (forum or Discord) whether that bridge could expose speed, grade and surface, e.g. a local UDP/WebSocket stream. It would unlock hills on the trainer (section 6 ideas 4 and 7) without memory reading |
+| 6 | **Gamepad rumble**: "the engine does support haptic actuators, so it might be a quick win", on the 1.1 list | Developer reply, "Gamepad vibration?", 2026-09-25 | Section 6 idea 8 (rumble -> road feel) is likely sooner than thought; vgamepad can receive rumble | After 1.1: log rumble from the virtual pad on different surfaces |
+| 7 | "Sim support isn't robust"; FFB, sim QoL and maybe triple screens by the winter sale | Developer reply, "Support for triples and direct drive?" | The developer is actively working on peripherals now | Good time to ask (item 5) |
+| 8 | Mod support / Workshop planned (vehicle customisation, interiors); tracks harder | Forum replies, 2026-09-23/27 | A later official path to add-ons | Watch; a Workshop API might allow a telemetry add-on |
+| 9 | 1.0.1: "a short delay when braking to a stop before transitioning into reverse" | Patch notes | Already accounted for (`--mode speed` brake cap) | None |
+| 10 | 1.0.2 (2026-09-28): steering-wheel input handler changed; "manual gear input interfering with autodrive's gear choice" fixed; experimental Steam overlay (`--enable-overlay`) | Patch notes | The overlay could cover the scroll point (the bridge then pauses scrolling safely, docs/SECURITY.md finding 2) | Leave the overlay off during rides |
+| 11 | Autodrive with a 40 limit sometimes stopped on uphills (2025, web version) | Forum, "slow road, but I can't go uphill and slow" | If a car stalls on a steep climb in limit mode, it's the game, not the bridge | Note only |
+| 12 | The developer won't add speed-limit signs outside villages ("arbitrary decisions about what speed you should be going") | Developer reply, 2026-09-28 | None | None |
+
+**Community wishes that would help a trainer rider** (not promised): gear-ratio tuning (a slower car that still
+cruises at highway speed in top gear), autodrive that hands over to autosteer when throttle input is detected,
+and cruise/autospeed able to use boost.
+
+**Suggested post to the developer** (for the user to send, not sent): a short note that a Wahoo KICKR bridge
+drives the game through a virtual pad and the speed-limit wheel; ask (1) whether the new device input bridge
+could also output speed, road grade and surface, and (2) for pad or keyboard bindings for speed-limit up/down,
+so we don't depend on the mouse wheel (which pointer lock may change).
+
 ## Sources
 
+- Steam forum threads read for section 15: [Detailed Feedback... Motorcycle](https://steamcommunity.com/app/3431300/discussions/0/583935357196874560/) · [more than 4 connected controllers](https://steamcommunity.com/app/3431300/discussions/0/583935357196745557/) · [Any chance for... (mod support)](https://steamcommunity.com/app/3431300/discussions/0/583935003344354758/) · [all news / patch notes](https://steamcommunity.com/app/3431300/allnews/)
 - [Steam store: Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/) · [Steam community announcements](https://steamcommunity.com/app/3431300) · [Slow Roads controls (third-party)](https://slowxroads.com/blog/slow-roads-controls/)
 - [GTBike V](https://www.gtbikev.com/) · [GTBike V mod docs](https://github.com/gtbikev/docs/blob/master/mod/INDEX.md) · [GTBike V 0.5.0.4 notes](https://www.gtbikev.com/2021/06/23/new-version-0-5-0-4-ble-sterzo-bots-and-bikecity/) · [GTBike V news](https://www.gtbikev.com/news/)
 - [Makinolo: Zwift trainer protocol](https://www.makinolo.com/blog/2024/10/20/zwift-trainer-protocol/) · [Makinolo: Zwift Ride protocol](https://www.makinolo.com/blog/2024/07/26/zwift-ride-protocol/)

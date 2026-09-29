@@ -63,6 +63,9 @@ at most one per 2.5 s; two <25 W packets = coasting regardless of lingering cade
 **Ratchet + re-home (2026-09-29):** a coast inside the resume grace reuses the grace floor (no stacked +5).
 The actuator re-homes fully when leaving the floor after any stepping (game menus eat wheel notches).
 docs/RESEARCH.md section 14.
+**Steam forums (2026-09-29, RESEARCH section 15):** the wheel doesn't change the limit in 3rd-person camera; the game
+sees only the first 4 gamepads (browser Gamepad API); 1.1.0 plans pointer-lock mouse + FFB via a new
+two-way "device input bridge" (ask the developer for speed/grade output there); re-test limit mode after updates.
 **Security (docs/SECURITY.md, all fixed 2026-09-27):** trainer pinned by address in settings.json (pairing needs
 FTMS UUID); wheel scrolls only onto slowroads.exe via bridge/gamewin.py; deps are hash-locked (edit *.in, re-lock
 with pip-compile --generate-hashes); settings validated; recorder stamp validated and screenshots game-only.

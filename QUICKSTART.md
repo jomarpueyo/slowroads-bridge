@@ -14,6 +14,8 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    - **Speed control on, in limit mode:** the padlock next to the speedometer, showing a number.
      The bridge sets that number.
    - Gearbox **Automatic** (or an electric motor).
+   - A **first-person or interior camera**. In third-person view the game ignores the mouse wheel for
+     the speed limit (reported on the Steam forum), so the bridge can't change it.
    - **Click into the game and leave it focused.** The game ignores the controller while another
      window is in front, and the status line then shows `NO GAME FOCUS`.
    - Leave the speedometer (bottom right) uncovered so the recorder can read it.
@@ -145,5 +147,8 @@ Attach the zip to a [new issue](https://github.com/jomarpueyo/slowroads-bridge/i
 | HUD gear shows **N**, engine revs but the car doesn't move | Gearbox is Manual (a PC crash on 2026-09-27 rolled the game's settings back to Manual). Vehicle → tuning → Gearbox: Automatic |
 | First controller press after starting the game does nothing | The game only notices a controller after its first press. Press any button once, or it wakes when throttle is applied |
 | Assist label says AUTOSPEED or AUTODRIVE | Press X on a controller (or use the game menu) until it says AUTOSTEER |
+| Limit doesn't change at all | Third-person camera: the game ignores the wheel there. Switch to a first-person/interior view (the camera key is in Settings > Controls), then stop once so the bridge re-syncs |
+| Car doesn't respond after a Slow Roads update | Updates can change controls (1.1.0 plans mouse pointer-lock and controller changes). Re-run `.venv\Scripts\python tools\experiments.py limitstep --focus` and tell Claude Code what happened |
+| Virtual controller ignored, real controllers plugged in | The game only sees the first 4 controllers Windows reports. Unplug extras |
 | Limit doesn't match your speed | Usually a game menu was open while the bridge changed the limit (the menu takes the scrolls). Stop pedalling until the car stops: the bridge re-syncs the count when you start again. Avoid opening game menus mid-ride |
 | Recorder `speed-*.csv` empty | Speedometer covered or the game not in front. The ride still works without it |
