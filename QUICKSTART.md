@@ -145,5 +145,5 @@ Attach the zip to a [new issue](https://github.com/jomarpueyo/slowroads-bridge/i
 | HUD gear shows **N**, engine revs but the car doesn't move | Gearbox is Manual (a PC crash on 2026-09-27 rolled the game's settings back to Manual). Vehicle → tuning → Gearbox: Automatic |
 | First controller press after starting the game does nothing | The game only notices a controller after its first press. Press any button once, or it wakes when throttle is applied |
 | Assist label says AUTOSPEED or AUTODRIVE | Press X on a controller (or use the game menu) until it says AUTOSTEER |
-| Limit doesn't match your speed | Stop pedalling for a few seconds: the limit drops to 5 mph and the bridge's count re-syncs |
+| Limit doesn't match your speed | Usually a game menu was open while the bridge changed the limit (the menu takes the scrolls). Stop pedalling until the car stops: the bridge re-syncs the count when you start again. Avoid opening game menus mid-ride |
 | Recorder `speed-*.csv` empty | Speedometer covered or the game not in front. The ride still works without it |

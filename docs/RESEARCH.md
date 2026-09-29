@@ -318,6 +318,30 @@ In-game `--sim` (200 W, 10 s coast, resume at 110 W): coasting held 50 mph (car 
 resume the limit **stayed 50 for 8 s** (car about 49 mph), then eased 50 → 45 → 40 → 35 → 30 over about 8 s to
 the 110 W steady state. The second coast was detected within 1 s. The limit matched in 31/32 samples.
 
+## 14. Burst riding and lost notches (ride 02:28, 2026-09-29)
+
+31:38 ride, 1899 packets, 0 bad; car and motorcycle. Recorder speedometer vs the bridge's counted limit
+matched within 1-2 mph except in two stretches, both bugs:
+
+**Coast-margin ratchet (min 6-9).** The rider rode in bursts: 3-5 s at 200-450 W, 2-4 s at 0 W. Each coast
+set the limit to the current limit + 5 mph. Pedalling again held that as the resume floor for 8 s. The next
+coast inside those 8 s added +5 again. The limit climbed 30 -> 100 mph while the target stayed around 35 mph,
+and the game really reached about 114 km/h. **Fix:** a coast that starts inside the resume grace, with the
+limit not above the grace floor, reuses that floor instead of adding the margin again. Replaying the ride
+through the fixed planner: the limit stays 30-60 mph (the peaks are real push-bonus targets). While
+pedalling it averaged 9 mph above target instead of 28.
+
+**Notches lost to the game's menu (min 13-22).** At 02:42:36 the game's settings menu (Controls tab) was
+open while the bridge stepped the limit 20 -> 5. The wheel scrolled the menu, not the limit, but the
+bridge counted the notches. The game window was still focused and under the cursor, so the checks from
+docs/SECURITY.md finding 2 can't tell. The padlock showed 20 while the bridge believed 5 (screenshot
+02:42:46). Every limit was 15 mph high until the next full stop re-synced at minute 22.5. **Fix:** after
+any stepping, the bridge fully re-homes (over-scrolls to the floor, under 1 s at 30 ms per notch) when it
+next leaves the floor, i.e. when the rider starts again from a stop. It's harmless when the count is right,
+because the game ignores scrolls below 5. A menu opened mid-ride can still leave the count off until the
+next stop. Detecting the menu without reading the screen is untested; one idea is whether the game shows
+the mouse cursor only in menus (GetCursorInfo).
+
 ## Sources
 
 - [Steam store: Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/) · [Steam community announcements](https://steamcommunity.com/app/3431300) · [Slow Roads controls (third-party)](https://slowxroads.com/blog/slow-roads-controls/)

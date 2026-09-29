@@ -121,7 +121,12 @@ class SpeedLimitPlanner:
         if not pedalling and self.desired > MIN_LIMIT:
             if self.coast_since is None:
                 self.coast_since = now
-                self.coast_limit = min(self.desired + c.coast_margin, MAX_LIMIT)
+                if now < self.resume_until and self.desired <= self.resume_floor:
+                    # Coasting again inside the last resume grace: keep that coast's limit. Adding the
+                    # margin again ratcheted 30 -> 100 mph on burst riding (ride 2026-09-29 02:28, 6-9 min).
+                    self.coast_limit = self.resume_floor
+                else:
+                    self.coast_limit = min(self.desired + c.coast_margin, MAX_LIMIT)
             held = now - self.coast_since
             if held < c.coast_hold_s:
                 self.state = "coasting"
@@ -178,6 +183,10 @@ class WheelActuator:
         self.dry_run = dry_run
         self.win = win or gamewin
         self.current: int | None = None  # unknown until homed
+        # True only straight after a full home. Notches can be lost without the bridge knowing (the game's
+        # own menu eats wheel events: ride 2026-09-29 02:42 left the count 15 mph low for 9 min), so the
+        # bridge re-homes whenever it leaves the floor after stepping there.
+        self._homed = False
         self._last_notch = 0.0
         self._game = None
         self._user32 = None if dry_run else ctypes.windll.user32
@@ -224,6 +233,7 @@ class WheelActuator:
         if self._scroll(-want) < want:
             return False  # interrupted: position unknown, try again later
         self.current = MIN_LIMIT
+        self._homed = True
         log.info("limit homed to %d", MIN_LIMIT)
         return True
 
@@ -236,11 +246,19 @@ class WheelActuator:
             return
         if now - self._last_notch < 1.0 / max_per_s:
             return
+        if self.current == MIN_LIMIT and desired > MIN_LIMIT and not self._homed:
+            # Leaving the floor (starting to ride again): full re-home first, <1 s. Harmless when the
+            # count is right (the game ignores scrolls below its floor), fixes it when notches were lost.
+            self.home()
+            self._last_notch = now
+            return
         if desired == MIN_LIMIT and self.current - STEP == MIN_LIMIT:
             if self._scroll(-(1 + RESYNC_EXTRA)) >= 1:  # extras are ignored at the floor: exact again
                 self.current = MIN_LIMIT
+                self._homed = False  # only exact if no earlier notch was lost; re-home when leaving
         elif self._scroll(1 if desired > self.current else -1) == 1:
             self.current += STEP if desired > self.current else -STEP
+            self._homed = False
         else:
             return  # not delivered: keep the count, retry next tick
         self._last_notch = now

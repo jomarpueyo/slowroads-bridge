@@ -60,6 +60,9 @@ Limit mode no longer caps target at speed-mode top speed. docs/RESEARCH.md secti
 (user asked to reward hard efforts). docs/RESEARCH.md section 12.
 **Resume grace (2026-09-27):** after a coast, pedalling holds the limit 8 s (up-steps allowed); riding step-downs
 at most one per 2.5 s; two <25 W packets = coasting regardless of lingering cadence. docs/RESEARCH.md section 13.
+**Ratchet + re-home (2026-09-29):** a coast inside the resume grace reuses the grace floor (no stacked +5).
+The actuator re-homes fully when leaving the floor after any stepping (game menus eat wheel notches).
+docs/RESEARCH.md section 14.
 **Security (docs/SECURITY.md, all fixed 2026-09-27):** trainer pinned by address in settings.json (pairing needs
 FTMS UUID); wheel scrolls only onto slowroads.exe via bridge/gamewin.py; deps are hash-locked (edit *.in, re-lock
 with pip-compile --generate-hashes); settings validated; recorder stamp validated and screenshots game-only.
@@ -140,13 +143,17 @@ packets to `tests/test_bridge.py`.
 ## Unverified / open
 - Does auto-steer work while throttle stays manual?
 
-## Milestones
-1. Controller check — `tools/trigger_sweep.py` with the Slow Roads demo. Stop and rethink if the car doesn't respond.
-2. Bluetooth check — `python -m bridge --dry-run` while pedaling; note flags and rate.
-3. Parser — add captured packets as tests; compare watts with the Wahoo app.
-4. Mapper — dry run, check smoothing feels responsive but not jumpy.
-5. Full loop against the demo; tune P_min, P_max, gamma.
-6. Calibration ride — hold 100/150/200 W, note in-game speed at each.
+## Goals
+The original goal (KICKR CORE drives Slow Roads) and its milestones 1-6 (controller, Bluetooth, parser,
+mapper, full loop, calibration) were all done by 2026-09-27. Goals from 2026-09-29, in order:
+
+1. **Reliable.** A whole ride with no wrong-limit stretches: the counted limit matches the padlock (check
+   the recorder's speed-*.csv against drive-*.csv car_est_kmh, as in docs/RESEARCH.md section 14). Next: verify the
+   ratchet and re-home fixes on a ride. Open: menus opened mid-ride (cursor-visibility idea, untested).
+2. **Feel.** Hills (needs a grade source: ask the developer for telemetry, RESEARCH section 6 idea 4, then
+   trainer resistance, idea 7), coasting feel, and a per-vehicle check (car vs motorcycle).
+3. **Training value.** Ride summary done (bridge/summary.py). Next: FIT export for Strava, heart rate,
+   structured workouts.
 
 ## Before a ride
 Close the Wahoo app and Zwift. Disconnect real controllers. Start the bridge before the game.

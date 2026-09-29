@@ -291,3 +291,82 @@ def test_interrupted_homing_leaves_position_unknown(monkeypatch):
     win.cover_after = 5                    # covered after 5 of the ~28 homing notches
     a = real_actuator(win, monkeypatch)
     assert a.home() is False and a.current is None
+
+
+def test_burst_riding_does_not_ratchet_the_coast_limit():
+    # Ride 2026-09-29 02:28 min 6-9: 3-5 s hard bursts, 2-4 s coasts. Each coast inside the resume
+    # grace added +5 again: 30 -> 100 mph at a steady ~35 mph target.
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12, resume_grace_s=8, coast_margin=5))
+    t = 0.0
+    p.update(mph(35), True, True, t)
+    seen = []
+    for _ in range(20):
+        for _ in range(4):
+            t += 1.0
+            seen.append(p.update(mph(35), True, True, t)[0])
+        for _ in range(3):
+            t += 1.0
+            seen.append(p.update(mph(30), True, False, t)[0])
+    assert max(seen) == 40                                      # 35 + one margin, never stacked
+
+
+def test_coast_after_the_grace_uses_the_new_riding_limit():
+    p = SpeedLimitPlanner(LimitConfig(coast_hold_s=12, resume_grace_s=8))
+    p.update(mph(35), True, True, 0.0)
+    p.update(mph(35), True, False, 1.0)                          # coast at 40
+    p.update(mph(50), True, True, 3.0)                           # really faster now: 50
+    assert p.update(mph(50), True, True, 20.0)[0] == 50
+    assert p.update(mph(45), True, False, 21.0)[0] == 55         # grace over: margin on the new limit
+
+
+class GameModel:
+    """The game's real limit, driven by wheel events. While a menu is open, the wheel scrolls the menu."""
+
+    def __init__(self, limit):
+        self.limit, self.menu_open = limit, False
+
+    def mouse_event(self, flags, x, y, delta, extra):
+        if not self.menu_open:
+            self.limit = min(125, max(MIN_LIMIT, self.limit + (5 if delta > 0 else -5)))
+
+    def GetCursorPos(self, p): pass
+    def SetCursorPos(self, x, y): pass
+
+
+def test_notches_lost_to_a_game_menu_are_fixed_when_riding_resumes(monkeypatch):
+    # Ride 2026-09-29 02:42: the settings menu was open while the bridge scrolled 20 -> 5 mph; the
+    # padlock stayed at 20 and every limit was 15 mph high for 9 minutes.
+    a = real_actuator(FakeWin(), monkeypatch)
+    game = GameModel(limit=60)
+    a._user32 = game
+    t = 0.0
+    a.step_toward(20, t, 4.0)                                    # homes first
+    while a.current != 20:
+        t += 0.3
+        a.step_toward(20, t, 4.0)
+    assert game.limit == 20
+    game.menu_open = True
+    while a.current != MIN_LIMIT:                                # bridge steps down; the menu eats it
+        t += 0.3
+        a.step_toward(MIN_LIMIT, t, 4.0)
+    assert game.limit == 20                                      # drifted: game 20, bridge 5
+    game.menu_open = False
+    for _ in range(40):                                          # rider starts pedalling again
+        t += 0.3
+        a.step_toward(30, t, 4.0)
+    assert a.current == 30 and game.limit == 30                  # re-homed on leaving the floor
+
+
+def test_no_rehome_while_riding_between_steps(monkeypatch):
+    a = real_actuator(FakeWin(), monkeypatch)
+    sent = []
+    monkeypatch.setattr(a, "_scroll", lambda n: (sent.append(n), abs(n))[1])
+    a.step_toward(30, 0.0, 4.0)                                  # initial home
+    t = 0.0
+    for _ in range(20):
+        t += 0.3
+        a.step_toward(30, t, 4.0)
+    for _ in range(20):
+        t += 0.3
+        a.step_toward(20, t, 4.0)
+    assert [n for n in sent[1:] if abs(n) > 1] == []             # only single notches after the first home
