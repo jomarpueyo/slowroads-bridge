@@ -31,3 +31,6 @@ desktop.ini
 
 # Claude Code per-user settings (shared .claude/ files can still be committed)
 .claude/settings.local.json
+
+# Claude Code project notes: kept locally, not published
+/CLAUDE.md

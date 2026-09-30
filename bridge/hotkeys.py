@@ -1,6 +1,6 @@
 """Ride hotkeys, read while Slow Roads is the focused window (so you don't have to alt-tab).
 
-F6 gear down, F7 gear up, F8 pause/resume, F9 re-sync the speed limit.
+F6 gear down, F7 gear up, F8 pause/resume, F9 re-sync the speed limit, F10 show/hide the overlay.
 
 Keys are polled with GetAsyncKeyState, not registered: nothing is taken away from the game or other
 programs, and a key only counts when the game window is in front. Turn off with --no-hotkeys.
@@ -8,9 +8,9 @@ programs, and a key only counts when the game window is in front. Turn off with 
 
 import sys
 
-KEYS = {"F6": 0x75, "F7": 0x76, "F8": 0x77, "F9": 0x78}
-ACTIONS = {"F6": "gear_down", "F7": "gear_up", "F8": "pause", "F9": "resync"}
-HELP = "F6/F7 gear -/+   F8 pause   F9 re-sync limit"
+KEYS = {"F6": 0x75, "F7": 0x76, "F8": 0x77, "F9": 0x78, "F10": 0x79}
+ACTIONS = {"F6": "gear_down", "F7": "gear_up", "F8": "pause", "F9": "resync", "F10": "overlay"}
+HELP = "F6/F7 gear -/+   F8 pause   F9 re-sync limit   F10 overlay"
 
 
 def _async_key_down(vk: int) -> bool:

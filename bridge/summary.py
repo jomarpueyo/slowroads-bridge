@@ -38,7 +38,7 @@ class RideSummary:
     work_kj: float = 0.0
     avg_cadence_rpm: float = 0.0
     max_cadence_rpm: float = 0.0
-    best: dict = None  # {"5 s": watts, "1 min": ..., "5 min": ...}
+    best: dict = None  # {"5 s": watts, "1 min": ..., "5 min": ..., "20 min": ...}
 
 
 def _num(value, kind):
@@ -116,7 +116,7 @@ def summarize_rows(rows) -> RideSummary:
         if len(series) >= 30:
             rolled = [sum(series[i - 30:i]) / 30 for i in range(30, len(series) + 1)]
             r.normalized_power_w = (sum(x ** 4 for x in rolled) / len(rolled)) ** 0.25
-        for label, window in (("5 s", 5), ("1 min", 60), ("5 min", 300)):
+        for label, window in (("5 s", 5), ("1 min", 60), ("5 min", 300), ("20 min", 1200)):
             best = _rolling_best(series, window)
             if best is not None:
                 r.best[label] = best
@@ -227,6 +227,12 @@ def format_totals(history: list, title: str) -> str:
     if len(history) > 10:
         lines.append(f"  (and {len(history) - 10} earlier)")
     return "\n".join(lines)
+
+
+def estimate_ftp(history: list) -> float | None:
+    """95% of the best 20 minutes across rides (a standard 20-minute-test estimate), or None."""
+    best20 = max((r.best.get("20 min", 0.0) for _, r, _ in history), default=0.0)
+    return round(best20 * 0.95) if best20 > 0 else None
 
 
 def compare_line(current: RideSummary, previous: RideSummary) -> str:

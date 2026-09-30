@@ -12,6 +12,7 @@ from pathlib import Path
 from . import settings
 from .drive import DriveConfig, DriveOutput, SpeedController, VirtualBike, bike_speed_from_power, trigger_value
 from .ftms import MalformedPacket, parse_indoor_bike_data, run_reader
+from .overlay import LiveStats, Overlay
 from .limiter import LimitConfig, SpeedLimitPlanner, WheelActuator, display_to_kmh
 from .mapper import MapperConfig, ThrottleMapper
 from .cleanup import old_entries, remove
@@ -19,7 +20,7 @@ from .crashreport import run_main
 from .cues import Cues
 from .hotkeys import HELP as HOTKEY_HELP, Hotkeys
 from .pad import NullPad, VirtualPad
-from .summary import compare_line, ride_history, summarize_csv, write_summary
+from .summary import compare_line, estimate_ftp, ride_history, summarize_csv, write_summary
 from .ridelog import (ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, close_event_log, format_status,
                       setup_event_log, timestamp)
 
@@ -92,6 +93,11 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="don't start Slow Roads through Steam once the trainer is connected")
     q.add_argument("--idle-end", type=float, default=3.0,
                    help="end the ride after this many minutes without pedalling (0 = never)")
+    q.add_argument("--no-overlay", dest="overlay", action="store_false", default=True,
+                   help="no trainer-data overlay at the top right of the game (F10 hides it during a ride)")
+    q.add_argument("--ftp", type=float, default=0.0,
+                   help="your FTP in watts for the overlay's %%FTP and zone (0 = estimate: 95%% of your best "
+                        "20 min in past rides)")
     q.add_argument("--keep-days", type=float, default=30.0,
                    help="after a ride, delete bulky logs older than this (ride CSVs and summaries kept; 0 = never)")
     ap.add_argument("--log-dir", type=Path, default=LOG_DIR)
@@ -149,6 +155,17 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
     cues = Cues(enabled=bool(args.sounds))
     hotkeys = Hotkeys(enabled=bool(args.hotkeys))
     actuator.on_home = lambda: cues.play("resync")
+    stats = LiveStats()
+    ftp, ftp_estimated = args.ftp, False
+    if not ftp:
+        try:
+            ftp = estimate_ftp(ride_history(Path(args.log_dir))) or 0.0
+            ftp_estimated = bool(ftp)
+        except Exception:
+            log.exception("could not estimate FTP")
+            ftp = 0.0
+    overlay = Overlay(lambda: stats.snapshot(time.monotonic(), ftp, ftp_estimated, args.units, state["paused"]),
+                      enabled=bool(args.overlay) and source_fn is None and sys.platform == "win32")
     state = {"conn": "starting", "power": None, "cadence": None,
              "out": DriveOutput(0.0, 0.0, 0.0, 0.0), "limit": None,
              "paused": False, "pedalled_at": None, "had_data": False, "focused": None, "launched": False}
@@ -163,6 +180,9 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
           f"settings:  gear {c.gear_ratio}, speed from {args.speed_source}"
           f"  ({'settings.json' if settings.load() else 'built-in defaults'})\n"
           + (f"keys:      {HOTKEY_HELP}  (with the game in front)\n" if hotkeys.enabled else "")
+          + (f"overlay:   top right of the game; FTP {ftp:.0f} W{' (estimated from past rides; set --ftp)' if ftp_estimated else ''}\n"
+             if overlay.enabled and ftp else "overlay:   top right of the game; set --ftp for %FTP and zones\n"
+             if overlay.enabled else "")
           + (f"auto-end:  after {args.idle_end:g} min without pedalling\n" if args.idle_end > 0 else "")
           + "Ctrl+C to stop\n", flush=True)
 
@@ -205,6 +225,9 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                           else "resumed"), flush=True)
             cues.play("paused" if state["paused"] else "resumed")
             state["pedalled_at"] = now if state["pedalled_at"] is not None else None
+        elif action == "overlay":
+            overlay.toggle()
+            log.info("hotkey: overlay %s", "on" if overlay.visible else "off")
         elif action == "resync" and args.mode == "limit":
             actuator.current = None  # next tick scrolls to the floor and climbs back to the limit
             log.info("hotkey: re-sync limit")
@@ -239,6 +262,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         if ((bike.power_w or 0) >= planner.config.coast_watts
                 or (bike.cadence_rpm or 0) >= planner.config.coast_cadence):
             state["pedalled_at"] = now
+            stats.start(now)
+        stats.add(now, bike.power_w, bike.cadence_rpm)
         # The KICKR keeps reporting cadence for a couple of seconds after pedalling stops (ride 12:48:
         # 0 W at 63 rpm), which delayed coast detection. Two low-power packets in a row = not pedalling;
         # a single 0 W packet mid-stroke is still ignored.
@@ -270,6 +295,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             push = planner.push_factor(mapper.smoothed) if (args.mode == "limit" and active) else 1.0
             state["push"] = push
             controller.set_bike_speed(state.get("bike_raw", 0.0) * push)
+            if active:
+                stats.add_distance(state.get("bike_raw", 0.0) * (now - last) / 3600)
             if args.mode == "limit":
                 target = controller.step(now - last, active).target_kmh
                 cad = state["cadence"] if state.get("low_n", 0) < 2 else 0
@@ -348,6 +375,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 log.exception("could not save trainer address")
 
         source = run_reader(on_packet, on_state, args.name, address=address, on_connected=on_paired)
+    overlay.start()
+
     async def idle_watch() -> None:
         """Ends the ride (returns) after --idle-end minutes without pedalling, once riding has started."""
         if args.idle_end <= 0:
@@ -401,6 +430,7 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 print(f"cleaned up {removed} old log entries (older than {args.keep_days:g} days)")
         except Exception:
             log.exception("log cleanup failed")
+        overlay.stop()
         cues.play("ride_end")
         cues.close()
         close_event_log()

@@ -36,7 +36,25 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    Under it, one line compares the ride with your previous one (time, average power, work).
    Totals across rides: `.venv\Scripts\python -m bridge.summary --week` (or `--month`, `--all`).
 
-## During the ride: keys and sounds
+## During the ride: overlay, keys and sounds
+
+A small overlay sits at the top right of the game, in the style of the game's own dashboard:
+
+```
+ 24:13    4.21    186    88          ride time, virtual bike miles, watts (3 s), cadence
+  TIME    MILES   WATTS  RPM
+  182     171     158    93% ●       1 / 5 / 10 min average watts, share of FTP with its zone colour
+ 1 MIN   5 MIN  10 MIN  FTP 200
+```
+
+- Everything comes from the trainer, never from the game. Time starts at your first pedal stroke;
+  miles are your virtual bike's distance (before the gear ratio), in km if the game is set to km/h.
+- An average is dimmed until its window is full (e.g. the 10 min average during the first 10 minutes).
+- **FTP:** set yours with `--ftp 220` or `"ftp": 220` in settings.json. Without it the overlay estimates
+  95% of your best 20 minutes in past rides and marks it `EST`. The dot is the zone: grey Z1 recovery,
+  blue Z2 endurance, green Z3 tempo, yellow Z4 threshold, orange Z5, red Z6, purple Z7.
+- It shows only while the game is in front, never takes focus, and clicks and scrolls go straight
+  through it. **F10** hides/shows it; `--no-overlay` (or `"overlay": 0`) turns it off.
 
 With the game window in front (no need to alt-tab):
 
@@ -45,6 +63,7 @@ With the game window in front (no need to alt-tab):
 | **F6 / F7** | Gear down / up by 0.25 (car km/h per bike km/h). Saved as your new default |
 | **F8** | Pause / resume: throttle off, the speed limit is left alone, auto-end waits. Use it before opening game menus |
 | **F9** | Re-sync the speed limit now (scrolls to 5 mph and climbs back, so the car dips for a moment) |
+| **F10** | Hide / show the overlay |
 
 The keys are only read, never taken over, so they still reach the game. `--no-hotkeys` turns them off.
 
@@ -98,13 +117,15 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | Previous model-based control (no in-game limit) | `--mode speed` (uses `--ramp`, `--max-throttle`, `--max-brake`) | limit |
 | Old watts-to-throttle behaviour | `--mode power` | limit |
 
+| Your FTP for the overlay's %FTP and zones | `--ftp` (watts; 0 = estimate from your best 20 min) | estimate |
+| No overlay | `--no-overlay` (F10 hides it for a moment) | on |
 | No beeps / no hotkeys / start the game yourself | `--no-sounds`, `--no-hotkeys`, `--no-launch-game` | on |
 | Ride ends by itself after this long without pedalling | `--idle-end` (minutes; 0 = never) | 3 |
 | Delete bulky logs (screenshots, 20 Hz logs) older than | `--keep-days` (ride CSVs and summaries are always kept; 0 = never) | 30 |
 
 To make a change permanent, add it under `"ride"` in `settings.json` (create it by copying `settings.example.json`), for example `"gear": 2.5`
 (F6/F7 do that for the gear). The comfort options use the keys `sounds`, `hotkeys` and `launch_game`
-(1 = on, 0 = off), `idle_end` and `keep_days`.
+and `overlay` (1 = on, 0 = off), `idle_end`, `keep_days` and `ftp`.
 
 ## When to recalibrate
 
@@ -132,7 +153,7 @@ recordings are how we measure that.
 | `logs/shots-*/` | Recorder: game-window screenshot every 5 s (only while the game is in front) |
 | `logs/game-*-start/`, `-end/` | Recorder: copy of the game's saved settings (vehicle, units) |
 | `settings.json` | Your ride preferences and calibration (git-ignored; start from `settings.example.json`) |
-| `CLAUDE.md` | Decisions, verified facts, open questions (for Claude Code sessions) |
+| `CLAUDE.md` | Decisions, verified facts, open questions for Claude Code sessions (local only, git-ignored) |
 
 Files from one ride share the same timestamp. After a ride, ask Claude Code to "check the logs from my
 last ride".
