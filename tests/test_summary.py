@@ -114,3 +114,32 @@ def test_write_summary_on_binary_garbage(tmp_path):
     csv_path.write_bytes(bytes(random.Random(5).getrandbits(8) for _ in range(4000)))
     text, _ = write_summary(csv_path)
     assert "no trainer data" in text
+
+
+def test_distance_is_zwift_like_from_power():
+    # Zwift Insider flat tests, 75 kg rider (+ ~9 kg bike): 3 W/kg = 225 W -> 35.8 km/h in Zwift.
+    r = summarize_rows(rows(1800, power=225, speed=24.0), rider_kg=84)
+    assert r.virtual_avg_kmh == pytest.approx(35.8, rel=0.05)
+    assert r.virtual_km == pytest.approx(35.8 / 2, rel=0.06)       # half an hour
+    assert r.distance_km == pytest.approx(12.0)                     # KICKR wheel speed kept separately
+    text = format_summary(r)
+    assert "km (" in text and "mi)" in text and "KICKR wheel speed reads 12.00 km" in text
+
+
+def test_advice_for_next_ride():
+    from bridge.summary import advice, format_advice
+
+    surgy = rows(600, power=0, cadence=65)
+    for i, row in enumerate(surgy):
+        row["power_w"] = "400" if (i // 20) % 3 == 0 else "40"  # 20 s on / 40 s off
+    r = summarize_rows(surgy)
+    prev = [summarize_rows(rows(900, power=90))]
+    tips = advice(r, prev, ftp=0)
+    text = format_advice(tips)
+    assert "== For next ride ==" in text and len(tips) <= 6
+    assert any("Cadence averaged 65 rpm" in t for t in tips)
+    assert any("Surgy pacing" in t for t in tips)
+    assert any("Next ride idea" in t for t in tips)
+    assert any("Set your FTP" in t for t in tips)
+    assert advice(summarize_rows(rows(120)), prev) == []             # too short to judge
+    assert not any("Set your FTP" in t for t in advice(r, prev, ftp=200))

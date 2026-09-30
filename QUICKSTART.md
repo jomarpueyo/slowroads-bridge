@@ -30,10 +30,15 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    Or just get off the bike: after **3 minutes without pedalling** the ride ends by itself
    (`--idle-end`; the countdown only starts once you've pedalled, and pausing with F8 stops it).
 6. The bridge prints a **ride summary** worked out from the trainer's data only (never the game): time
-   (total and moving), distance and speed, average/max/normalized power, best 5 s / 1 min / 5 min power,
-   work (kJ, roughly kcal) and cadence. It is saved as `logs/summary-*.txt`. Print any ride again with
+   (total and moving), distance and speed, average/max/normalized power, best 5 s / 1 min / 5 min / 20 min
+   power, work (kJ, roughly kcal) and cadence. It is saved as `logs/summary-*.txt`. Print any ride again with
    `.venv\Scripts\python -m bridge.summary logs\ride-YYYYMMDD-HHMMSS.csv` (no file = the latest ride).
-   Under it, one line compares the ride with your previous one (time, average power, work).
+   - **Distance** is Zwift-like: your power through a virtual road bike (the same one the overlay uses),
+     within about 1-4% of Zwift's flat speeds for 75-100 kg riders. Set `--rider-kg` to your weight plus
+     about 9 kg of bike (default 85). The KICKR's own wheel speed is listed too; it reads about 30% lower.
+   - **For next ride**: up to six plain suggestions from the ride's data: new personal bests, cadence,
+     steady vs surgy pacing, coasting, fading or a negative split, and a target for next time.
+   - Under it, one line compares the ride with your previous one (time, average power, work).
    Totals across rides: `.venv\Scripts\python -m bridge.summary --week` (or `--month`, `--all`).
 
 ## During the ride: overlay, keys and sounds

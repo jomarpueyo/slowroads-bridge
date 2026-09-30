@@ -84,6 +84,7 @@ class VirtualBike:
                  rho: float = 1.225, eta: float = 0.97) -> None:
         self.m, self.cda, self.crr, self.rho, self.eta = mass_kg, cda, crr, rho, eta
         self.v = 0.0  # m/s
+        self.substep = 0.02  # s; replays of whole rides use a coarser step (still stable)
 
     @property
     def kmh(self) -> float:
@@ -95,7 +96,7 @@ class VirtualBike:
         if not (watts == watts and abs(watts) != float("inf")):  # NaN/inf never reach the controller
             watts = 0.0
         # Integrate in small sub-steps so a large dt (a stalled loop) stays stable.
-        n = max(1, int(dt / 0.02))
+        n = max(1, int(dt / self.substep))
         h = dt / n
         for _ in range(n):
             drive = self.eta * max(watts, 0.0) / max(self.v, 1.0)  # force; capped at low speed

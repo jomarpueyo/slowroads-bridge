@@ -411,14 +411,18 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             pass
         log.info("stop packets=%d bad=%d", ride.packets, ride.bad_packets)
         print(f"\n{ride.packets} packets ({ride.bad_packets} bad) -> {ride.path}")
-        try:  # cycling metrics from the trainer's data only, never the game
-            text, saved = write_summary(ride.path)
+        try:
+            history = ride_history(Path(args.log_dir), exclude=ride.path, rider_kg=args.rider_kg)
+        except Exception:
+            log.exception("could not read earlier rides")
+            history = []
+        try:  # cycling metrics from the trainer's data only, never the game, plus tips for next time
+            text, saved = write_summary(ride.path, args.rider_kg, [r for _, r, _ in history], args.ftp)
             print("\n" + text + (f"\nsaved: {saved}" if saved else ""), flush=True)
         except Exception:
             log.exception("could not summarize the ride")
         try:  # one line against the previous real ride
-            current = summarize_csv(ride.path)
-            history = ride_history(Path(args.log_dir), exclude=ride.path)
+            current = summarize_csv(ride.path, args.rider_kg)
             if history and current.moving_s >= 60:
                 print(compare_line(current, history[-1][1]), flush=True)
         except Exception:

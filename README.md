@@ -100,7 +100,6 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 | `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `pad.py` (virtual controller), `ridelog.py` (logs), `summary.py` (ride summary and totals), `cues.py` / `hotkeys.py` (beeps, F6-F9), `cleanup.py` (old logs), `overlay.py` (trainer-data overlay), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
 | `tools/` | Checks and testing tools: ride summaries and replays, trainer probes, calibration, and **testing-only** screen-OCR experiments that drive the game (`experiments.py`, `speedo.py`, `debugpanel.py`, `ride_recorder.py`) |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest -q`) |
-| `docs/RESEARCH.md` | Measurements, in-game test results and design decisions, section by section |
 | `docs/SECURITY.md` | Security review: threat model, findings and what was tested |
 | `docs/STEPPING.md`, `docs/stepping.html` | How the limit steps in six situations; regenerate with `tools/stepping_diagrams.py` |
 | `ride.bat`, `report.bat`, `calibrate.bat`, `scripts/setup.ps1` | Launchers and one-time setup |
@@ -108,8 +107,7 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 
 Each ride writes to `logs/` (git-ignored): trainer packets, 20 Hz controller decisions and, from the
 recorder, the in-game speedometer, screenshots of the game window (never the desktop) and a copy of the
-game's own saved settings. That's what the tuning in `docs/RESEARCH.md` is based
-on.
+game's own saved settings. That's what the tuning is based on.
 
 ## Testing without a bike
 

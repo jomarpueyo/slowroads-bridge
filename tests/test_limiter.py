@@ -268,7 +268,7 @@ def real_actuator(win, monkeypatch):
 def test_actuator_does_not_scroll_or_count_when_game_is_covered(monkeypatch):
     win = FakeWin()
     a = real_actuator(win, monkeypatch)
-    assert a.home() and a.current == MIN_LIMIT
+    assert a.home() and a.home() and a.current == MIN_LIMIT   # second home: trusted, no re-home on leaving
     win.covered = True
     a.step_toward(30, 10.0, 4.0)
     assert a.current == MIN_LIMIT          # not delivered -> count unchanged
@@ -369,4 +369,24 @@ def test_no_rehome_while_riding_between_steps(monkeypatch):
     for _ in range(20):
         t += 0.3
         a.step_toward(20, t, 4.0)
-    assert [n for n in sent[1:] if abs(n) > 1] == []             # only single notches after the first home
+    homes = [i for i, n in enumerate(sent) if abs(n) > 1]
+    assert homes == [0, 1]              # start-up home, then one re-home on first leaving the floor; no more
+
+
+
+
+def test_start_up_home_on_the_main_menu_is_fixed_before_riding(monkeypatch):
+    # Ride 2026-09-29 19:21: the bridge started the game and homed while the main menu was showing; the
+    # scrolls changed nothing, and the padlock read 25 while the count said 5 for 7 minutes.
+    a = real_actuator(FakeWin(), monkeypatch)
+    game = GameModel(limit=25)
+    game.menu_open = True
+    a._user32 = game
+    t = 0.0
+    a.step_toward(MIN_LIMIT, t, 4.0)                             # start-up home: eaten by the menu
+    assert a.current == MIN_LIMIT and game.limit == 25
+    game.menu_open = False                                       # "continue": on the road
+    for _ in range(40):                                          # first pedal strokes
+        t += 0.3
+        a.step_toward(35, t, 4.0)
+    assert a.current == 35 and game.limit == 35

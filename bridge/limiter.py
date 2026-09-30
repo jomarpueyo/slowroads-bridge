@@ -187,6 +187,7 @@ class WheelActuator:
         # own menu eats wheel events: ride 2026-09-29 02:42 left the count 15 mph low for 9 min), so the
         # bridge re-homes whenever it leaves the floor after stepping there.
         self._homed = False
+        self._homes = 0
         self.on_home = None  # optional callback after each successful home (sound cue)
         self._last_notch = 0.0
         self._game = None
@@ -234,7 +235,11 @@ class WheelActuator:
         if self._scroll(-want) < want:
             return False  # interrupted: position unknown, try again later
         self.current = MIN_LIMIT
-        self._homed = True
+        # The first home happens as soon as the game window is in front, which is often still the main
+        # menu: those scrolls change nothing (ride 2026-09-29 19:21 homed on the menu, then the padlock
+        # read 25 while the count said 5, for 7 min). Don't trust it: re-home on first leaving the floor.
+        self._homed = self._homes > 0
+        self._homes += 1
         log.info("limit homed to %d", MIN_LIMIT)
         if self.on_home:
             self.on_home()
