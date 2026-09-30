@@ -94,6 +94,9 @@ try {
     & $venvPy -m pytest -q
     if ($LASTEXITCODE -ne 0) { throw "tests failed" }
 
+    Step "Desktop shortcuts"
+    & (Join-Path $PSScriptRoot "shortcuts.ps1")
+
     Step "Done"
     Write-Host "Ready. Start a ride with ride.bat (see QUICKSTART.md). The first ride pairs with your trainer."
 }

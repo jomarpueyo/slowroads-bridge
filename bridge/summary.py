@@ -2,6 +2,7 @@
 
 Printed when a ride ends and saved as logs/summary-<stamp>.txt. Re-print any ride with:
   .venv\\Scripts\\python -m bridge.summary [logs\\ride-YYYYMMDD-HHMMSS.csv]   (default: latest ride)
+Totals across rides: python -m bridge.summary --week | --month | --all   (simulated and <1 min rides skipped)
 
 Notes on the numbers:
   - Distance and speed are the trainer's reported (flywheel) speed, as a head unit would show.
@@ -11,8 +12,10 @@ Notes on the numbers:
 """
 
 import csv
+import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 MAX_GAP_S = 5.0
@@ -159,10 +162,91 @@ def write_summary(ride_csv: Path) -> tuple[str, Path | None]:
     return text, out
 
 
+MIN_RIDE_S = 60  # shorter rides (tests, false starts) don't count in totals
+
+
+def _stamp_of(path: Path) -> datetime | None:
+    m = re.search(r"(\d{8})-(\d{6})", path.name)
+    try:
+        return datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S") if m else None
+    except ValueError:
+        return None
+
+
+def is_simulated(ride_csv: Path) -> bool:
+    """True if the bridge log for this ride shows a --sim run (scripted, not pedalled)."""
+    log_path = ride_csv.with_name(ride_csv.name.replace("ride-", "bridge-", 1)).with_suffix(".log")
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if " start " in line and " sim=" in line:
+                    return " sim=None" not in line
+    except OSError:
+        pass
+    return False
+
+
+def ride_history(log_dir: Path, since: datetime | None = None, exclude: Path | None = None) -> list:
+    """[(start time, RideSummary, path)] of real rides, oldest first."""
+    out = []
+    for path in sorted(log_dir.glob("ride-*.csv")):
+        stamp = _stamp_of(path)
+        if stamp is None or (since and stamp < since) or (exclude and path.resolve() == exclude.resolve()):
+            continue
+        if is_simulated(path):
+            continue
+        try:
+            r = summarize_csv(path)
+        except OSError:
+            continue
+        if r.moving_s >= MIN_RIDE_S:
+            out.append((stamp, r, path))
+    return out
+
+
+def format_totals(history: list, title: str) -> str:
+    if not history:
+        return f"{title}: no rides."
+    moving = sum(r.moving_s for _, r, _ in history)
+    work = sum(r.work_kj for _, r, _ in history)
+    dist = sum(r.distance_km for _, r, _ in history)
+    best = {}
+    for _, r, _ in history:
+        for k, v in r.best.items():
+            best[k] = max(best.get(k, 0.0), v)
+    lines = [f"== {title} (trainer data only) ==",
+             f"Rides       {len(history)}   {_hms(moving)} moving   {dist:.1f} km",
+             f"Work        {work:.0f} kJ (~{work:.0f} kcal)   avg power {work * 1000 / moving:.0f} W" if moving else
+             f"Work        {work:.0f} kJ",
+             "Best        " + ("  ".join(f"{k} {v:.0f} W" for k, v in best.items()) or "-"),
+             ""]
+    for stamp, r, _ in history[-10:]:
+        np_ = f"{r.normalized_power_w:.0f}" if r.normalized_power_w else "--"
+        lines.append(f"  {stamp:%a %d %b %H:%M}  {_hms(r.moving_s):>7}  {r.distance_km:5.1f} km  "
+                     f"{r.avg_power_w:4.0f} W avg  NP {np_:>3}  {r.work_kj:4.0f} kJ")
+    if len(history) > 10:
+        lines.append(f"  (and {len(history) - 10} earlier)")
+    return "\n".join(lines)
+
+
+def compare_line(current: RideSummary, previous: RideSummary) -> str:
+    def d(a, b, fmt):
+        return ("+" if a >= b else "-") + fmt.format(abs(a - b))
+    return (f"vs last ride: time {d(current.moving_s / 60, previous.moving_s / 60, '{:.0f} min')}, "
+            f"avg power {d(current.avg_power_w, previous.avg_power_w, '{:.0f} W')}, "
+            f"work {d(current.work_kj, previous.work_kj, '{:.0f} kJ')}")
+
+
 def main(argv=None) -> int:
     from .ridelog import LOG_DIR
 
     argv = sys.argv[1:] if argv is None else argv
+    periods = {"--week": ("Last 7 days", 7), "--month": ("Last 30 days", 30), "--all": ("All rides", None)}
+    if argv and argv[0] in periods:
+        title, days = periods[argv[0]]
+        since = datetime.now() - timedelta(days=days) if days else None
+        print(format_totals(ride_history(LOG_DIR, since), title))
+        return 0
     if argv:
         path = Path(argv[0])
     else:

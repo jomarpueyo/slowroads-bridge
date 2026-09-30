@@ -21,7 +21,10 @@ SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
 # Keys match bridge command-line option names (dest form).
 KEYS = ("gear", "accel", "coast", "drag_quad", "brake_rate", "top_speed", "deadzone",
-        "max_throttle", "max_brake", "ramp")
+        "max_throttle", "max_brake", "ramp",
+        # quality-of-life preferences (numbers; 0 = off): sounds, hotkeys and launch_game are 0/1,
+        # idle_end is minutes without pedalling before the ride ends, keep_days is log retention.
+        "sounds", "hotkeys", "launch_game", "idle_end", "keep_days")
 # Bluetooth address as Windows/bleak report it: six hex pairs.
 ADDRESS_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 
@@ -80,6 +83,17 @@ def save(ride: dict, meta: dict, path: Path = SETTINGS_PATH) -> None:
         if k in KEYS and isinstance(v, (int, float)) and math.isfinite(v):
             data["ride"][k] = round(float(v), 5)
     data["calibration"] = meta
+    _write(data, path)
+
+
+def save_pref(key: str, value: float, path: Path = SETTINGS_PATH) -> None:
+    """Set one ride value (e.g. the gear from the F6/F7 hotkeys), keeping everything else."""
+    if key not in KEYS or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"bad setting {key}={value!r}")
+    data = _read(path)
+    if not isinstance(data.get("ride"), dict):
+        data["ride"] = {}
+    data["ride"][key] = round(float(value), 5)
     _write(data, path)
 
 

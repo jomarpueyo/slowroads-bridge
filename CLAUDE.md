@@ -23,6 +23,17 @@ Background and design history: docs/RESEARCH.md (the original V1 tech overview l
 - `bridge.__main__.run(args, source_fn=...)` — inject a packet source (tests/fuzz_harness.py); the ride
   ends when it returns. `plausible()` drops impossible readings (power 0-3000 W, cadence 0-250, speed 0-120)
   before control; the ride CSV keeps raw values.
+- `bridge/cues.py` — sound cues (winsound.Beep on a thread): connected / trainer_lost (active transitions),
+  focus_lost / focus_back (status loop), resync (WheelActuator.on_home), gear, paused/resumed, ride_end
+- `bridge/hotkeys.py` — F6/F7 gear -/+0.25 (settings.save_pref), F8 pause (throttle 0, no scrolling, plan
+  "paused"), F9 re-sync (actuator.current=None). Polled with GetAsyncKeyState only while the game is focused.
+- `bridge/cleanup.py` — after each ride, delete stamped log entries older than keep_days (30); ride-*.csv and
+  summary-*.txt always kept. Totals: `python -m bridge.summary --week|--month|--all` (skips --sim and <60 s).
+- Auto-end: `--idle-end` minutes (3) without pedalling, after the first pedal stroke, ends the ride.
+  Game auto-start: `os.startfile("steam://rungameid/3431300")` on first connect if slowroads.exe isn't running.
+  Comfort prefs in settings.json "ride": sounds/hotkeys/launch_game (0/1), idle_end, keep_days.
+  argparse: `ap.set_defaults(**saved)` must stay after the last add_argument.
+- `scripts/shortcuts.ps1` — desktop shortcuts (setup.ps1 runs it)
 - `tools/fuzz_bridge.py` — long fuzz campaign (testing only); tests/test_fuzz_bridge.py is the short one
 - `bridge/drive.py` — target speed (gear ratio, power->speed physics) and the `--mode speed` model
 - `tools/stepping_diagrams.py` — regenerate docs/STEPPING.md, docs/stepping/*.svg, docs/stepping.html after logic changes
@@ -159,6 +170,7 @@ mapper, full loop, calibration) were all done by 2026-09-27. Goals from 2026-09-
    structured workouts.
 
 ## Before a ride
-Close the Wahoo app and Zwift. Disconnect real controllers. Start the bridge before the game.
+Close the Wahoo app and Zwift. Disconnect real controllers. Start the bridge before the game (it launches
+the game itself once the trainer connects).
 In Slow Roads: auto-steer ON, auto speed and autodrive OFF, accelerate on right trigger,
 electric or automatic transmission, traffic off for early tests.

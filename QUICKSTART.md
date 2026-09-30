@@ -5,10 +5,11 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
 ## Every ride
 
 1. Close the Wahoo app and Zwift. Unplug any real game controllers. Wake the KICKR (pedal a few strokes).
-2. Double-click **`ride.bat`** in this folder. It starts two windows:
+2. Double-click **`ride.bat`** in this folder (or the **Slow Roads Ride** shortcut on your desktop). It starts two windows:
    - the bridge (live status line), and
    - a minimized recorder that logs the game side for tuning.
-3. Start Slow Roads **after** the bridge says `connected`. In the game:
+3. When the trainer connects (rising beep), the bridge **starts Slow Roads through Steam** if it isn't
+   already running (`--no-launch-game` to start it yourself). In the game:
    - Assist **AUTOSTEER**. On the controller, X cycles AUTOSTEER → AUTOSPEED → AUTODRIVE and
      A turns the assist on and off. The bridge never presses them.
    - **Speed control on, in limit mode:** the padlock next to the speedometer, showing a number.
@@ -26,15 +27,44 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    limit holds where it was for 8 s while your watts build, then eases down a step at a time if you're
    riding easier than before. It never reverses.
 5. Press **Ctrl+C** in the bridge window to finish. The recorder stops on its own.
+   Or just get off the bike: after **3 minutes without pedalling** the ride ends by itself
+   (`--idle-end`; the countdown only starts once you've pedalled, and pausing with F8 stops it).
 6. The bridge prints a **ride summary** worked out from the trainer's data only (never the game): time
    (total and moving), distance and speed, average/max/normalized power, best 5 s / 1 min / 5 min power,
    work (kJ, roughly kcal) and cadence. It is saved as `logs/summary-*.txt`. Print any ride again with
    `.venv\Scripts\python -m bridge.summary logs\ride-YYYYMMDD-HHMMSS.csv` (no file = the latest ride).
+   Under it, one line compares the ride with your previous one (time, average power, work).
+   Totals across rides: `.venv\Scripts\python -m bridge.summary --week` (or `--month`, `--all`).
+
+## During the ride: keys and sounds
+
+With the game window in front (no need to alt-tab):
+
+| Key | Does |
+| --- | --- |
+| **F6 / F7** | Gear down / up by 0.25 (car km/h per bike km/h). Saved as your new default |
+| **F8** | Pause / resume: throttle off, the speed limit is left alone, auto-end waits. Use it before opening game menus |
+| **F9** | Re-sync the speed limit now (scrolls to 5 mph and climbs back, so the car dips for a moment) |
+
+The keys are only read, never taken over, so they still reach the game. `--no-hotkeys` turns them off.
+
+| Sound | Means |
+| --- | --- |
+| Two rising beeps | Trainer data flowing (start, or back after a drop) |
+| Two falling beeps | Trainer data lost (throttle off) |
+| Three low beeps | The game isn't the window in front: the car won't respond. Click the game |
+| One high beep | The game is back in front |
+| Two short beeps | Speed limit re-synced |
+| Short tick | Gear changed |
+| Long / rising pair | Paused / resumed |
+| Three falling beeps | Ride ended |
+
+`--no-sounds` turns them off.
 
 **Don't touch the mouse wheel over the game during a ride.** The bridge changes the limit by
 scrolling, and it counts its own scrolls. It briefly moves the cursor to the left side of the
-screen to scroll, then puts it back. If the limit ever looks wrong, stop pedalling for a few
-seconds: going back to 5 mph re-syncs the count.
+screen to scroll, then puts it back. If the limit ever looks wrong, press F9 (or stop pedalling for a few
+seconds): going back to 5 mph re-syncs the count.
 
 The status line reads:
 `03:12 connected   185W  82rpm tgt  45 limit  30mph thr 60% brk  0% 1.0Hz bad 0`
@@ -68,7 +98,13 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | Previous model-based control (no in-game limit) | `--mode speed` (uses `--ramp`, `--max-throttle`, `--max-brake`) | limit |
 | Old watts-to-throttle behaviour | `--mode power` | limit |
 
-To make a change permanent, add it under `"ride"` in `settings.json` (create it by copying `settings.example.json`), for example `"gear": 2.5`.
+| No beeps / no hotkeys / start the game yourself | `--no-sounds`, `--no-hotkeys`, `--no-launch-game` | on |
+| Ride ends by itself after this long without pedalling | `--idle-end` (minutes; 0 = never) | 3 |
+| Delete bulky logs (screenshots, 20 Hz logs) older than | `--keep-days` (ride CSVs and summaries are always kept; 0 = never) | 30 |
+
+To make a change permanent, add it under `"ride"` in `settings.json` (create it by copying `settings.example.json`), for example `"gear": 2.5`
+(F6/F7 do that for the gear). The comfort options use the keys `sounds`, `hotkeys` and `launch_game`
+(1 = on, 0 = off), `idle_end` and `keep_days`.
 
 ## When to recalibrate
 
@@ -113,6 +149,9 @@ Run these from this folder in PowerShell.
 | `.venv\Scripts\python tools\trigger_sweep.py` | Does the game respond to the virtual controller? |
 | `.venv\Scripts\python tools\probe_rates.py` | How often the KICKR sends each data stream |
 | `.venv\Scripts\python tools\experiments.py limiter --focus` | Testing only: game experiments (`limiter`, `holds`, `buttons`, `limitrange`, `limitstep`). Takes over the game window and drives the car |
+| `.venv\Scripts\python -m bridge.summary --week` | Totals for the last 7 days (`--month`, `--all`); scripted `--sim` rides and rides under 1 min are left out |
+| `.venv\Scripts\python -m bridge.cleanup --dry-run` | Which old logs the after-ride cleanup would delete (drop `--dry-run` to delete now) |
+| `powershell -ExecutionPolicy Bypass -File scripts\shortcuts.ps1` | Desktop shortcuts for ride.bat and report.bat (setup does this too) |
 | `report.bat` | Bundle crash reports, recent logs and the environment check into one zip to send to the developer |
 | `.venv\Scripts\python -m bridge.summary` | Ride summary (trainer data only) for the last ride, or pass a `ride-*.csv` |
 | `.venv\Scripts\python -m pytest -q` | Test suite (includes a short fuzz test of the whole bridge) |

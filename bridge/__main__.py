@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import time
 from dataclasses import replace
@@ -13,14 +14,19 @@ from .drive import DriveConfig, DriveOutput, SpeedController, VirtualBike, bike_
 from .ftms import MalformedPacket, parse_indoor_bike_data, run_reader
 from .limiter import LimitConfig, SpeedLimitPlanner, WheelActuator, display_to_kmh
 from .mapper import MapperConfig, ThrottleMapper
+from .cleanup import old_entries, remove
 from .crashreport import run_main
+from .cues import Cues
+from .hotkeys import HELP as HOTKEY_HELP, Hotkeys
 from .pad import NullPad, VirtualPad
-from .summary import write_summary
+from .summary import compare_line, ride_history, summarize_csv, write_summary
 from .ridelog import (ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, close_event_log, format_status,
                       setup_event_log, timestamp)
 
 log = logging.getLogger("bridge")
 OUTPUT_HZ = 20
+STEAM_APP_ID = 3431300  # Slow Roads
+GEAR_STEP, GEAR_MIN, GEAR_MAX = 0.25, 0.5, 6.0
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -67,7 +73,6 @@ def parse_args(argv=None) -> argparse.Namespace:
     g.add_argument("--ramp", type=float, default=d.throttle_ramp_up, help="max throttle rise per second")
     g.add_argument("--deadzone", type=float, default=0.0,
                    help="trigger value below which the game ignores throttle (0 with automatic gearbox)")
-    ap.set_defaults(**saved)
     p = ap.add_argument_group("power mode")
     p.add_argument("--p-min", type=float, default=m.p_min, help="watts that read as coasting")
     p.add_argument("--p-max", type=float, default=m.p_max, help="watts for full throttle")
@@ -78,8 +83,20 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--trainer", metavar="ADDRESS|pair",
                     help="Bluetooth address of the trainer to use, or 'pair' to forget the saved one and "
                          "pair with the first FTMS trainer found (saved to settings.json)")
+    q = ap.add_argument_group("comfort (settings.json keys: sounds, hotkeys, launch_game, idle_end, keep_days)")
+    q.add_argument("--no-sounds", dest="sounds", action="store_false", default=True,
+                   help="no beeps (connected, trainer lost, game not in front, re-sync, gear, pause, ride end)")
+    q.add_argument("--no-hotkeys", dest="hotkeys", action="store_false", default=True,
+                   help="ignore F6/F7 gear, F8 pause, F9 re-sync (only read while the game is in front)")
+    q.add_argument("--no-launch-game", dest="launch_game", action="store_false", default=True,
+                   help="don't start Slow Roads through Steam once the trainer is connected")
+    q.add_argument("--idle-end", type=float, default=3.0,
+                   help="end the ride after this many minutes without pedalling (0 = never)")
+    q.add_argument("--keep-days", type=float, default=30.0,
+                   help="after a ride, delete bulky logs older than this (ride CSVs and summaries kept; 0 = never)")
     ap.add_argument("--log-dir", type=Path, default=LOG_DIR)
     ap.add_argument("--verbose", action="store_true", help="echo the event log to the console")
+    ap.set_defaults(**saved)  # after every add_argument, or the later ones ignore settings.json
     args = ap.parse_args(argv)
     if args.gear is None:
         args.gear = d.gear_ratio if args.speed_source == "trainer" else 2.0
@@ -129,8 +146,12 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
     actuator = WheelActuator(dry_run=args.dry_run)
     pad = NullPad() if args.dry_run else VirtualPad()
     vbike = VirtualBike(mass_kg=args.rider_kg)
+    cues = Cues(enabled=bool(args.sounds))
+    hotkeys = Hotkeys(enabled=bool(args.hotkeys))
+    actuator.on_home = lambda: cues.play("resync")
     state = {"conn": "starting", "power": None, "cadence": None,
-             "out": DriveOutput(0.0, 0.0, 0.0, 0.0), "limit": None}
+             "out": DriveOutput(0.0, 0.0, 0.0, 0.0), "limit": None,
+             "paused": False, "pedalled_at": None, "had_data": False, "focused": None, "launched": False}
     log.info("start dry_run=%s mode=%s speed_source=%s units=%s deadzone=%.2f drive=%s limit=%s mapper=%s sim=%s",
              args.dry_run, args.mode, args.speed_source, args.units, args.deadzone, controller.config,
              planner.config, mapper.config, args.sim)
@@ -141,11 +162,53 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
           f"mode:      {args.mode} ({how})\n"
           f"settings:  gear {c.gear_ratio}, speed from {args.speed_source}"
           f"  ({'settings.json' if settings.load() else 'built-in defaults'})\n"
-          f"Ctrl+C to stop\n", flush=True)
+          + (f"keys:      {HOTKEY_HELP}  (with the game in front)\n" if hotkeys.enabled else "")
+          + (f"auto-end:  after {args.idle_end:g} min without pedalling\n" if args.idle_end > 0 else "")
+          + "Ctrl+C to stop\n", flush=True)
+
+    def launch_game() -> None:
+        state["launched"] = True
+        if not args.launch_game or args.dry_run or source_fn is not None or sys.platform != "win32":
+            return
+        try:
+            if actuator.win.find_game_window() is None:
+                os.startfile(f"steam://rungameid/{STEAM_APP_ID}")
+                log.info("started Slow Roads through Steam")
+                print("\nstarting Slow Roads through Steam...", flush=True)
+        except Exception:
+            log.exception("could not start Slow Roads")
 
     def on_state(s: str) -> None:
         state["conn"] = s
         log.info("state -> %s", s)
+        if s == "connected" and not state["launched"]:
+            launch_game()
+
+    def on_hotkey(action: str, now: float) -> None:
+        if action in ("gear_down", "gear_up"):
+            c = controller.config
+            g = c.gear_ratio + (GEAR_STEP if action == "gear_up" else -GEAR_STEP)
+            c.gear_ratio = args.gear = round(min(GEAR_MAX, max(GEAR_MIN, g)), 2)
+            try:
+                settings.save_pref("gear", c.gear_ratio)
+                saved = "saved"
+            except Exception:
+                log.exception("could not save gear")
+                saved = "not saved"
+            log.info("hotkey: gear %.2f", c.gear_ratio)
+            print(f"\ngear {c.gear_ratio:.2f} ({saved})", flush=True)
+            cues.play("gear")
+        elif action == "pause":
+            state["paused"] = not state["paused"]
+            log.info("hotkey: %s", "paused" if state["paused"] else "resumed")
+            print("\n" + ("PAUSED: throttle off, speed limit left alone. F8 to resume" if state["paused"]
+                          else "resumed"), flush=True)
+            cues.play("paused" if state["paused"] else "resumed")
+            state["pedalled_at"] = now if state["pedalled_at"] is not None else None
+        elif action == "resync" and args.mode == "limit":
+            actuator.current = None  # next tick scrolls to the floor and climbs back to the limit
+            log.info("hotkey: re-sync limit")
+            print("\nre-syncing the speed limit (car dips for a moment)", flush=True)
 
     def on_packet(raw: bytes) -> None:
         now = time.monotonic()
@@ -173,6 +236,9 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         elif bike.speed_kmh is not None:
             state["bike_raw"] = bike.speed_kmh
         state["power"], state["cadence"] = bike.power_w, bike.cadence_rpm
+        if ((bike.power_w or 0) >= planner.config.coast_watts
+                or (bike.cadence_rpm or 0) >= planner.config.coast_cadence):
+            state["pedalled_at"] = now
         # The KICKR keeps reporting cadence for a couple of seconds after pedalling stops (ride 12:48:
         # 0 W at 63 rpm), which delayed coast detection. Two low-power packets in a row = not pedalling;
         # a single 0 W packet mid-stroke is still ignored.
@@ -186,6 +252,19 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         while True:
             now = time.monotonic()
             active = not mapper.is_stale(now)
+            for action in hotkeys.poll(actuator.game_focused()):
+                on_hotkey(action, now)
+            if active != state["had_data"]:
+                cues.play("connected" if active else "trainer_lost")
+                state["had_data"] = active
+            if state["paused"]:
+                out = DriveOutput(0.0, 0.0, 0.0, state["out"].car_est_kmh)
+                state["out"], state["plan"] = out, "paused"
+                pad.set_controls(0.0, 0.0)
+                drive_log.write(now, active, controller.bike_kmh, out, 0.0, "paused")
+                last = now
+                await asyncio.sleep(1 / OUTPUT_HZ)
+                continue
             if args.speed_source == "virtual":
                 state["bike_raw"] = vbike.step(state.get("drive_w", 0) if active else 0.0, now - last)
             push = planner.push_factor(mapper.smoothed) if (args.mode == "limit" and active) else 1.0
@@ -222,7 +301,13 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             conn = state["conn"]
             if conn == "connected" and mapper.is_stale(now):
                 conn = "no data"
-            if args.mode == "limit" and not actuator.game_focused():
+            focused = actuator.game_focused()
+            if state["focused"] is not None and focused != state["focused"]:
+                cues.play("focus_back" if focused else "focus_lost")
+            state["focused"] = focused
+            if state["paused"]:
+                conn = "PAUSED"
+            elif args.mode == "limit" and not focused:
                 conn = "NO GAME FOCUS"
             elif args.mode == "limit" and (state.get("plan") in ("coasting", "releasing")
                                            or str(state.get("plan", "")).startswith("push")):
@@ -263,8 +348,21 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 log.exception("could not save trainer address")
 
         source = run_reader(on_packet, on_state, args.name, address=address, on_connected=on_paired)
+    async def idle_watch() -> None:
+        """Ends the ride (returns) after --idle-end minutes without pedalling, once riding has started."""
+        if args.idle_end <= 0:
+            await asyncio.Event().wait()
+        while True:
+            await asyncio.sleep(1.0)
+            t = state["pedalled_at"]
+            if t is not None and not state["paused"] and time.monotonic() - t > args.idle_end * 60:
+                msg = f"no pedalling for {args.idle_end:g} min: ending the ride"
+                log.info(msg)
+                print("\n" + msg, flush=True)
+                return
+
     tasks = [asyncio.ensure_future(source), asyncio.ensure_future(output_loop()),
-             asyncio.ensure_future(status_loop())]
+             asyncio.ensure_future(status_loop()), asyncio.ensure_future(idle_watch())]
     try:
         # The ride ends when the data source finishes (simulated/fuzzed rides) or on Ctrl+C. An error in
         # any loop ends it too and is re-raised, so crash reporting sees it instead of it being swallowed.
@@ -289,6 +387,22 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             print("\n" + text + (f"\nsaved: {saved}" if saved else ""), flush=True)
         except Exception:
             log.exception("could not summarize the ride")
+        try:  # one line against the previous real ride
+            current = summarize_csv(ride.path)
+            history = ride_history(Path(args.log_dir), exclude=ride.path)
+            if history and current.moving_s >= 60:
+                print(compare_line(current, history[-1][1]), flush=True)
+        except Exception:
+            log.exception("could not compare with the last ride")
+        try:
+            removed = remove(old_entries(Path(args.log_dir), args.keep_days, active=stamp))
+            if removed:
+                log.info("removed %d log entries older than %g days", removed, args.keep_days)
+                print(f"cleaned up {removed} old log entries (older than {args.keep_days:g} days)")
+        except Exception:
+            log.exception("log cleanup failed")
+        cues.play("ride_end")
+        cues.close()
         close_event_log()
 
 

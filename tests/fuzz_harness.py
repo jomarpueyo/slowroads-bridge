@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from bridge.__main__ import parse_args, run  # noqa: E402
 
-PLANS = {"", "stopped", "riding", "coasting", "releasing"}  # plus "push xN.NN"
+PLANS = {"", "stopped", "riding", "coasting", "releasing", "paused"}  # plus "push xN.NN"
 
 
 def valid_packet(rng: random.Random, extreme: bool) -> bytes:
@@ -77,7 +77,8 @@ def run_fuzz(kind: str, seed: int, seconds: float, log_dir: Path, mode: str = "l
              speed_source: str = "virtual") -> dict:
     """Run one fuzzed ride and return what it produced (raises on any crash)."""
     sent: list = []
-    args = parse_args(["--dry-run", "--log-dir", str(log_dir), "--mode", mode, "--speed-source", speed_source])
+    args = parse_args(["--dry-run", "--log-dir", str(log_dir), "--mode", mode, "--speed-source", speed_source,
+                       "--no-sounds", "--no-hotkeys"])
     asyncio.run(run(args, source_fn=make_source(kind, seed, seconds, sent)))
     return {"sent": sent, "log_dir": log_dir}
 

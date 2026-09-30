@@ -187,6 +187,7 @@ class WheelActuator:
         # own menu eats wheel events: ride 2026-09-29 02:42 left the count 15 mph low for 9 min), so the
         # bridge re-homes whenever it leaves the floor after stepping there.
         self._homed = False
+        self.on_home = None  # optional callback after each successful home (sound cue)
         self._last_notch = 0.0
         self._game = None
         self._user32 = None if dry_run else ctypes.windll.user32
@@ -235,6 +236,8 @@ class WheelActuator:
         self.current = MIN_LIMIT
         self._homed = True
         log.info("limit homed to %d", MIN_LIMIT)
+        if self.on_home:
+            self.on_home()
         return True
 
     def step_toward(self, desired: int, now: float, max_per_s: float) -> None:
