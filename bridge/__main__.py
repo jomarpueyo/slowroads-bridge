@@ -13,7 +13,7 @@ from pathlib import Path
 from . import settings
 from .drive import DriveConfig, DriveOutput, SpeedController, VirtualBike, bike_speed_from_power, trigger_value
 from .ftms import MalformedPacket, parse_indoor_bike_data, run_reader
-from .overlay import LiveStats, Overlay
+from .overlay import Attention, LiveStats, Overlay
 from .limiter import LimitConfig, SpeedLimitPlanner, WheelActuator, display_to_kmh
 from .mapper import MapperConfig, ThrottleMapper
 from .cleanup import old_entries, remove
@@ -100,6 +100,10 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="end the ride after this many minutes without pedalling (0 = never)")
     q.add_argument("--no-overlay", dest="overlay", action="store_false", default=True,
                    help="no trainer-data overlay at the top right of the game (F10 hides it during a ride)")
+    q.add_argument("--overlay-fade", type=float, default=20.0,
+                   help="seconds before the overlay's numbers fade to dim (they light up again on each minute, "
+                        "mile, surge or high cadence); 0 = always bright")
+    q.add_argument("--overlay-dim", type=float, default=0.35, help="brightness of faded numbers (0.1-1)")
     q.add_argument("--ftp", type=float, default=0.0,
                    help="your FTP in watts for the overlay's %%FTP and zone (0 = estimate: 95%% of your best "
                         "20 min in past rides)")
@@ -222,8 +226,14 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
     records = coach.records()
     companion = Companion({d: w for d, (w, _) in records["curve"].items()}, coach.lifetime()["miles"],
                           0 if workout_key == "long" else args.comfort_break, drink=bool(args.drink))
-    overlay = Overlay(lambda: stats.snapshot(time.monotonic(), ftp, ftp_estimated, args.units, state["paused"],
-                                             state.get("workout_status"), current_message()),
+    attention = Attention(args.overlay_fade, args.overlay_dim)
+
+    def overlay_snapshot() -> dict:
+        now = time.monotonic()
+        return attention.apply(stats.snapshot(now, ftp, ftp_estimated, args.units, state["paused"],
+                                              state.get("workout_status"), current_message()), now)
+
+    overlay = Overlay(overlay_snapshot,
                       enabled=bool(args.overlay) and source_fn is None and sys.platform == "win32")
     state = {"conn": "starting", "power": None, "cadence": None,
              "out": DriveOutput(0.0, 0.0, 0.0, 0.0), "limit": None,

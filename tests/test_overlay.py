@@ -84,3 +84,61 @@ def test_overlay_disabled_does_nothing():
     ov.toggle()
     ov.stop()
     assert ov.hwnd is None and not ov.visible
+
+
+def _snap(elapsed, miles=0.0, power=120, cad=85, paused=False, avg5=120):
+    return {"elapsed": elapsed, "distance": miles, "dist_label": "MILES", "power": power, "cadence": cad,
+            "avgs": [("1 MIN", 120, True), ("5 MIN", avg5, True), ("10 MIN", 120, True)],
+            "ftp": 150, "ftp_estimated": False, "paused": paused}
+
+
+def test_attention_fades_after_the_start_but_never_off():
+    from bridge.overlay import Attention
+
+    a = Attention(fade_after=20, dim=0.35, fade_s=3)
+    assert a.apply(_snap(5), 5)["alpha"]["power"] == 1.0          # start: bright
+    assert a.apply(_snap(21.5), 21.5)["alpha"]["power"] == pytest.approx(0.675)   # fading
+    s = a.apply(_snap(40), 40)
+    assert s["alpha"]["power"] == pytest.approx(0.35) and s["hot"] == set()        # calm: dim, not off
+
+
+def test_attention_lights_up_only_the_number_that_matters():
+    from bridge.overlay import Attention
+
+    a = Attention(fade_after=20)
+    t = 0.0
+    for el in range(0, 59):
+        a.apply(_snap(el), t + el)
+    s = a.apply(_snap(60.5), 60.5)                                 # a whole minute
+    assert s["alpha"]["time"] == 1.0 and s["alpha"]["power"] == pytest.approx(0.35)
+    a.apply(_snap(70, miles=0.99), 70)
+    s = a.apply(_snap(71, miles=1.01), 71)                         # a mile
+    assert s["alpha"]["distance"] == 1.0 and "distance" in s["hot"]
+    s = a.apply(_snap(90, miles=1.1, power=200, avg5=120), 90)     # surge
+    assert "power" in s["hot"] and s["alpha"]["ftp"] == 1.0
+    s = a.apply(_snap(91, miles=1.1, power=125, cad=104), 91)      # high cadence
+    assert "cadence" in s["hot"]
+    s = a.apply(_snap(115, miles=1.2, power=125, cad=85), 115)     # all calm again
+    assert s["hot"] == set() and max(s["alpha"].values()) < 1.0
+
+
+def test_attention_bright_while_paused_and_off_switch():
+    from bridge.overlay import Attention
+
+    a = Attention(fade_after=20)
+    a.apply(_snap(100), 100)
+    assert all(v == 1.0 for v in a.apply(_snap(130, paused=True), 130)["alpha"].values())
+    assert a.apply(_snap(140), 140)["alpha"]["power"] == 1.0       # just resumed: a few seconds bright
+    never = Attention(fade_after=0).apply(_snap(500), 500)
+    assert "alpha" not in never
+
+
+def test_render_uses_per_number_brightness():
+    pytest.importorskip("PIL")
+    bright = render(_snap(600), 1.0)
+    faded = render({**_snap(600), "alpha": {k: 0.35 for k in ("time", "distance", "power", "cadence", "avgs", "ftp")},
+                    "hot": set()}, 1.0)
+    assert bright.size == faded.size
+    assert faded.getchannel("A").getextrema()[1] < bright.getchannel("A").getextrema()[1]
+    hot = render({**_snap(600), "alpha": {}, "hot": {"power"}}, 1.0)
+    assert hot.size == bright.size

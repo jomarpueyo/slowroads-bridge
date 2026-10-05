@@ -142,6 +142,77 @@ def _draw_tracked(d, xy, text: str, font, fill, tracking: float) -> None:
         x += font.getlength(ch) + tracking
 
 
+HIGHLIGHT = (255, 214, 120)  # warm gold for a number that just did something worth a look
+
+
+class Attention:
+    """Keeps the numbers quiet so they don't pull your eyes all ride (reading them all the time was
+    distracting): after `fade_after` s they fade to `dim` (never off), and only the number that matters
+    lights up for a moment: the time each whole minute, the miles each mile, the watts on a surge (25% over
+    your 5 min average, or 20% over FTP), the cadence at `high_rpm` and up. Paused or the first seconds:
+    everything bright. Coach messages and the workout row are never dimmed. fade_after 0 = never fade."""
+
+    KEYS = ("time", "distance", "power", "cadence", "avgs", "ftp")
+
+    def __init__(self, fade_after: float = 20.0, dim: float = 0.35, fade_s: float = 3.0,
+                 high_rpm: float = 100.0) -> None:
+        self.fade_after, self.fade_s, self.high_rpm = fade_after, fade_s, high_rpm
+        self.dim = max(0.1, min(1.0, dim))
+        self._hold: dict = {}
+        self._hot: dict = {}
+        self._minute = None
+        self._mile = None
+        self._paused = False
+
+    def bump(self, key: str, now: float, seconds: float, hot: bool = False) -> None:
+        self._hold[key] = max(self._hold.get(key, float("-inf")), now + seconds)
+        if hot:
+            self._hot[key] = max(self._hot.get(key, float("-inf")), now + seconds)
+
+    def level(self, key: str, now: float) -> float:
+        until = self._hold.get(key, float("-inf"))
+        if now < until:
+            return 1.0
+        if now < until + self.fade_s:
+            return 1.0 - (1.0 - self.dim) * (now - until) / self.fade_s
+        return self.dim
+
+    def apply(self, snap: dict, now: float) -> dict:
+        """Add snap['alpha'] (key -> brightness 0..1) and snap['hot'] (keys to highlight); returns snap."""
+        if self.fade_after <= 0:
+            return snap
+        elapsed = snap.get("elapsed") or 0.0
+        paused = bool(snap.get("paused"))
+        if paused or elapsed < self.fade_after:
+            for k in self.KEYS:  # all bright at the start (then a gentle fade) and while paused
+                self.bump(k, now, 0.5 if paused else self.fade_after - elapsed)
+        if self._paused and not paused:
+            for k in self.KEYS:
+                self.bump(k, now, 5.0)
+        self._paused = paused
+        minute = int(elapsed // 60)
+        if self._minute is not None and minute > self._minute:
+            self.bump("time", now, 3.0)
+        self._minute = minute
+        mile = int(snap.get("distance") or 0.0)
+        if self._mile is not None and mile > self._mile:
+            self.bump("distance", now, 6.0, hot=True)
+        self._mile = mile
+        power, ftp = snap.get("power"), snap.get("ftp") or 0.0
+        avg5 = next((v for name, v, _ in snap.get("avgs", []) if name == "5 MIN"), None)
+        surge = power is not None and elapsed >= 60 and (
+            (avg5 and power >= 1.25 * avg5 and power >= avg5 + 30) or (ftp and power >= 1.2 * ftp))
+        if surge:
+            self.bump("power", now, 3.0, hot=True)
+            self.bump("ftp", now, 3.0)
+        cad = snap.get("cadence")
+        if cad is not None and cad >= self.high_rpm:
+            self.bump("cadence", now, 3.0, hot=True)
+        snap["alpha"] = {k: self.level(k, now) for k in self.KEYS}
+        snap["hot"] = {k for k, t in self._hot.items() if now < t}
+        return snap
+
+
 def render(snap: dict, scale: float = 1.0):
     """RGBA image of the panel: white numbers with small spaced labels and a soft shadow, no box."""
     from PIL import Image, ImageDraw, ImageFilter
@@ -153,17 +224,27 @@ def render(snap: dict, scale: float = 1.0):
     label_c = (255, 255, 255, 170)
 
     power = snap["power"]
-    top = [(_fmt_time(snap["elapsed"]), "TIME", white),
-           (f"{snap['distance']:.2f}", snap["dist_label"], white),
-           ("--" if power is None else f"{power:.0f}", "WATTS", white),
-           ("--" if snap["cadence"] is None else f"{snap['cadence']:.0f}", "RPM", white)]
-    bottom = [("--" if v is None else f"{v:.0f}", name, white if full else dim) for name, v, full in snap["avgs"]]
+    # Cells are (value, label, colour, key): `key` picks the brightness from snap["alpha"] (Attention), and
+    # keys in snap["hot"] are drawn in the highlight colour (a mile done, a surge, a high cadence).
+    top = [(_fmt_time(snap["elapsed"]), "TIME", white, "time"),
+           (f"{snap['distance']:.2f}", snap["dist_label"], white, "distance"),
+           ("--" if power is None else f"{power:.0f}", "WATTS", white, "power"),
+           ("--" if snap["cadence"] is None else f"{snap['cadence']:.0f}", "RPM", white, "cadence")]
+    bottom = [("--" if v is None else f"{v:.0f}", name, white if full else dim, "avgs")
+              for name, v, full in snap["avgs"]]
     z = zone(power, snap["ftp"])
     if snap["ftp"]:
         pct = "--" if z is None else f"{z[2] * 100:.0f}%"
-        bottom.append((pct, f"FTP {snap['ftp']:.0f}" + (" EST" if snap["ftp_estimated"] else ""), white))
+        bottom.append((pct, f"FTP {snap['ftp']:.0f}" + (" EST" if snap["ftp_estimated"] else ""), white, "ftp"))
     if snap["paused"]:
-        top[0] = ("PAUSED", "F8 TO RESUME", white)
+        top[0] = ("PAUSED", "F8 TO RESUME", white, None)
+    alphas, hot = snap.get("alpha") or {}, snap.get("hot") or set()
+
+    def shade(colour, key, highlight=True):
+        if highlight and key in hot:
+            colour = HIGHLIGHT + (colour[3],)
+        a = alphas.get(key, 1.0) if key else 1.0
+        return colour[:3] + (int(colour[3] * a),)
 
     probe = ImageDraw.Draw(Image.new("L", (1, 1)))
 
@@ -174,7 +255,7 @@ def render(snap: dict, scale: float = 1.0):
     track = 1.6 * scale
 
     def row_layout(cells, font):
-        widths = [max(size(v, font)[0], _tracked_width(lab, f["label"], track)) for v, lab, _ in cells]
+        widths = [max(size(c[0], font)[0], _tracked_width(c[1], f["label"], track)) for c in cells]
         return widths, sum(widths) + col_gap * (len(cells) - 1)
 
     # optional workout row: block, time left, target (coloured by whether you're on it), cadence target
@@ -182,15 +263,15 @@ def render(snap: dict, scale: float = 1.0):
     work = []
     if wk:
         state_c = {"ok": (130, 225, 140, 240), "low": (255, 195, 90, 240), "high": (255, 150, 110, 240)}
-        work.append((f"{wk['index']}/{wk['count']}", wk["block"].upper()[:18], white))
-        work.append((_fmt_time(wk["left"]), "LEFT", white))
+        work.append((f"{wk['index']}/{wk['count']}", wk["block"].upper()[:18], white, None))
+        work.append((_fmt_time(wk["left"]), "LEFT", white, None))
         if wk["target"]:
             lo, hi = wk["target"]
-            work.append((f"{lo:.0f}-{hi:.0f}", "TARGET W", state_c.get(wk["state"], white)))
+            work.append((f"{lo:.0f}-{hi:.0f}", "TARGET W", state_c.get(wk["state"], white), None))
         else:
-            work.append(("EASY", "ANY POWER", white))
+            work.append(("EASY", "ANY POWER", white, None))
         if wk.get("cadence"):
-            work.append((f"{wk['cadence'][0]}-{wk['cadence'][1]}", "RPM TARGET", white))
+            work.append((f"{wk['cadence'][0]}-{wk['cadence'][1]}", "RPM TARGET", white, None))
     message = snap.get("message")
 
     w_top, total_top = row_layout(top, f["big"])
@@ -211,11 +292,11 @@ def render(snap: dict, scale: float = 1.0):
 
     def draw_row(cells, widths, total, font, y, h):
         x = width - pad - total  # right-aligned block
-        for (value, label, colour), w in zip(cells, widths):
+        for (value, label, colour, key), w in zip(cells, widths):
             vw = size(value, font)[0]
             lw = _tracked_width(label, f["label"], track)
-            d.text((x + w - vw, y), value, font=font, fill=colour, anchor="la")
-            _draw_tracked(d, (x + w - lw, y + h + lab_gap), label, f["label"], label_c, track)
+            d.text((x + w - vw, y), value, font=font, fill=shade(colour, key), anchor="la")
+            _draw_tracked(d, (x + w - lw, y + h + lab_gap), label, f["label"], shade(label_c, key, False), track)
             x += w + col_gap
         return x
 
@@ -226,7 +307,7 @@ def render(snap: dict, scale: float = 1.0):
     if z is not None:  # small zone dot beside the FTP share
         r = int(4 * scale)
         cx, cy = width - pad + int(8 * scale), y2 + mid_h // 2 + int(2 * scale)
-        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=z[1] + (230,))
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=z[1] + (int(230 * alphas.get("ftp", 1.0)),))
     y = y2 + mid_h + lab_gap + lab_h
     if work:
         y += row_gap * 2
@@ -253,7 +334,7 @@ def render(snap: dict, scale: float = 1.0):
 class Overlay:
     """The overlay window on its own thread. snapshot_fn() -> dict for render()."""
 
-    def __init__(self, snapshot_fn, enabled: bool = True, win=None, fps: float = 2.0) -> None:
+    def __init__(self, snapshot_fn, enabled: bool = True, win=None, fps: float = 4.0) -> None:
         self.snapshot_fn = snapshot_fn
         self.enabled = enabled
         self.visible = True  # F10

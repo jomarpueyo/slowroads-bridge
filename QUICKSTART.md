@@ -106,6 +106,12 @@ A small overlay sits at the top right of the game, in the style of the game's ow
 - Everything comes from the trainer, never from the game. Time starts at your first pedal stroke;
   miles are your virtual bike's distance (before the gear ratio), in km if the game is set to km/h.
 - An average is dimmed until its window is full (e.g. the 10 min average during the first 10 minutes).
+- **Quiet numbers:** 20 s into the ride the numbers fade to about a third (never off) so they don't pull
+  your eyes. Only the one that matters lights up for a moment: the **time** each whole minute, the
+  **miles** in gold each mile, the **watts** in gold on a surge (25% over your 5 min average, or 20% over
+  FTP), the **rpm** in gold at 100+. Everything is bright while paused. Coach messages and the workout row
+  never fade. `--overlay-fade 0` keeps everything bright; `--overlay-dim 0.5` makes faded numbers brighter
+  (settings.json: `"overlay_fade"`, `"overlay_dim"`).
 - **FTP:** set yours with `--ftp 220` or `"ftp": 220` in settings.json. Without it the overlay estimates
   95% of your best 20 minutes in past rides and marks it `EST`. The dot is the zone: grey Z1 recovery,
   blue Z2 endurance, green Z3 tempo, yellow Z4 threshold, orange Z5, red Z6, purple Z7.
