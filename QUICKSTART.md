@@ -94,6 +94,8 @@ distance and speed), `"ftp"` (or let the ramp test set it), `"comfort_break": 20
 
 A small overlay sits at the top right of the game, in the style of the game's own dashboard:
 
+![Overlay reminders at 15, 20 and 60 minutes](docs/images/overlay-reminders.png)
+
 ```
  24:13    4.21    186    88          ride time, virtual bike miles, watts (3 s), cadence
   TIME    MILES   WATTS  RPM
