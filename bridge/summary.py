@@ -17,7 +17,7 @@ Notes on the numbers:
 import csv
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -48,6 +48,8 @@ class RideSummary:
     first_half_w: float | None = None   # average power over the first / second half of ridden time
     second_half_w: float | None = None
     low_power_share: float = 0.0     # share of ridden seconds under 25 W (coasting)
+    series: list = field(default=None, repr=False)          # watts per ridden second (power curve, zones)
+    cadence_series: list = field(default=None, repr=False)  # rpm per ridden second
 
 
 def _num(value, kind):
@@ -112,7 +114,7 @@ def summarize_rows(rows, rider_kg: float = 85.0) -> RideSummary:
         return r
     r.duration_s = samples[-1][0] - samples[0][0]
     work = cad_sum = cad_time = 0.0
-    per_second = {}
+    per_second, per_second_cad = {}, {}
     for (t0, p, c, v), (t1, *_ ) in zip(samples, samples[1:]):
         dt = t1 - t0
         if dt <= 0 or dt > MAX_GAP_S:
@@ -127,7 +129,7 @@ def summarize_rows(rows, rider_kg: float = 85.0) -> RideSummary:
             cad_time += dt
         for sec in range(int(t0), int(t1) + 1):  # hold each reading until the next (1 s resolution)
             if t0 <= sec < t1:
-                per_second[sec] = p
+                per_second[sec], per_second_cad[sec] = p, c
     valid_p = [s[1] for s in samples if s[1] is not None]
     valid_c = [s[2] for s in samples if s[2] is not None]
     valid_v = [s[3] for s in samples if s[3] is not None]
@@ -144,7 +146,15 @@ def summarize_rows(rows, rider_kg: float = 85.0) -> RideSummary:
     if r.moving_s > 0:
         r.virtual_avg_kmh = r.virtual_km / (r.moving_s / 3600)
     if per_second:
-        series = [per_second[s] for s in sorted(per_second)]  # ridden seconds only; pauses are left out
+        secs = sorted(per_second)
+        # Leave out idle time before the first and after the last pedal stroke (bridge started early, or
+        # left running): ride 2026-09-27 09:29 was mostly idle and gave a 45 min "best" of 13 W.
+        active = [i for i, s in enumerate(secs) if per_second[s] > 0 or per_second_cad.get(s, 0.0) > 0]
+        if active:
+            secs = secs[active[0]:active[-1] + 1]
+        series = [per_second[s] for s in secs]  # ridden seconds only; pauses are left out
+        r.series = series
+        r.cadence_series = [per_second_cad.get(s, 0.0) for s in secs]
         half = len(series) // 2
         if half >= 60:
             r.first_half_w = sum(series[:half]) / half
@@ -238,6 +248,15 @@ def format_advice(tips: list[str]) -> str:
     if not tips:
         return ""
     return "\n".join(["", "", "== For next ride =="] + [f"- {t}" for t in tips])
+
+
+def save_summary(ride_csv: Path, text: str) -> Path | None:
+    out = ride_csv.with_name(ride_csv.name.replace("ride-", "summary-", 1)).with_suffix(".txt")
+    try:
+        out.write_text(text + "\n", encoding="utf-8")
+        return out
+    except OSError:
+        return None
 
 
 def write_summary(ride_csv: Path, rider_kg: float = 85.0, previous: list | None = None,

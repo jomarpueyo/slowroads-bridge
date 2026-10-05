@@ -41,6 +41,54 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    - Under it, one line compares the ride with your previous one (time, average power, work).
    Totals across rides: `.venv\Scripts\python -m bridge.summary --week` (or `--month`, `--all`).
 
+## Coach: scoreboard, ride book and workouts
+
+Everything here comes from the trainer's data in `logs/` and stays on this PC.
+
+**Start menu.** `ride.bat` opens with your week (rides and minutes against your goal, streak, days since
+your last ride) and today's suggested workout. Press **Enter** (or wait 20 s) for a free ride, **1** for the
+suggestion, **2-7** for another workout. Skip the menu with `ride.bat --workout endurance` (or `suggested`).
+
+**Workouts** (targets are a share of your FTP; the overlay shows the block, time left and the target in
+green when you're on it, orange when off; a double beep marks each new block):
+
+| Workout | What | Good for |
+| --- | --- | --- |
+| `easy` | 30 min light spin, 85-95 rpm | recovery days, keeping the habit on busy days |
+| `endurance` | 45 min steady Z2 in 10 min blocks | aerobic base, durability |
+| `cadence` | 34 min: 6 x 2 min fast spin (95-105 rpm) | smoother pedalling, higher cadence |
+| `tempo` | 3 x 6 min tempo | even pacing |
+| `sweetspot` | 2 x 10 min just under threshold | raising FTP |
+| `long` | your long ride: last longest + 5 min, in ~15 min blocks with 1 min stand-up breaks | long rides (saddle and mind) |
+| `ramp` | ramp test: 1 min steps +20 W until you can't hold one | **measures your FTP** (75% of your best minute) and saves it |
+
+The trainer is never controlled (data flows one way): you hold the target with your legs and gears.
+
+**During any ride** the overlay also shows short coach messages with a beep: **stand up & stretch** every
+20 min (`--comfort-break`, 0 = off), a check-in every 15 min, **new bests** live (1 / 5 / 20 min power) and
+**lifetime mile milestones** (10, 25, 50, 100 ...).
+
+**After the ride** the summary adds training load (TSS and intensity, needs an FTP), time in zones, your
+longest steady stretch and coasts, new records, tips, and the **scoreboard**: lifetime miles, hours, rides
+and kJ, this week vs your goal, streak, records, fitness / fatigue / form, strengths, what to work on, and
+the next ride.
+
+**Ride book** (double-click **`rides.bat`**: scoreboard here, charts in your browser):
+
+| Command | |
+| --- | --- |
+| `.venv\Scripts\python -m bridge.ridebook` | scoreboard |
+| `.venv\Scripts\python -m bridge.ridebook list` | all rides, numbered (1 = newest) |
+| `.venv\Scripts\python -m bridge.ridebook show 3` | one ride in full, with its power curve |
+| `.venv\Scripts\python -m bridge.ridebook hide 3` / `unhide 3` | leave a test ride out of totals and records |
+| `.venv\Scripts\python -m bridge.ridebook note 1 sore seat after 25 min` | note a ride |
+| `.venv\Scripts\python -m bridge.dashboard` | `logs\dashboard.html`: tiles, minutes per week vs goal, power curve, fitness and form, records, all rides |
+| `.venv\Scripts\python -m bridge.workouts` | the workouts with your targets, and today's suggestion |
+
+**Your goals and body** (in `settings.json` under `"ride"`, or as options): `"weekly_rides": 3`,
+`"weekly_minutes": 90` (the week counts when either is met), `"rider_kg": 85` (you + about 9 kg of bike:
+distance and speed), `"ftp"` (or let the ramp test set it), `"comfort_break": 20`.
+
 ## During the ride: overlay, keys and sounds
 
 A small overlay sits at the top right of the game, in the style of the game's own dashboard:

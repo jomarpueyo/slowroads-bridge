@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import time
+from types import SimpleNamespace
 from dataclasses import replace
 from pathlib import Path
 
@@ -20,7 +21,11 @@ from .crashreport import run_main
 from .cues import Cues
 from .hotkeys import HELP as HOTKEY_HELP, Hotkeys
 from .pad import NullPad, VirtualPad
-from .summary import compare_line, estimate_ftp, ride_history, summarize_csv, write_summary
+from .coach import Coach
+from .companion import Companion
+from .ridebook import analyse as analyse_ride
+from .summary import advice, compare_line, format_advice, format_summary, save_summary, summarize_csv
+from .workouts import KEYS as WORKOUT_KEYS, WorkoutRunner, build as build_workout
 from .ridelog import (ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, close_event_log, format_status,
                       setup_event_log, timestamp)
 
@@ -98,6 +103,15 @@ def parse_args(argv=None) -> argparse.Namespace:
     q.add_argument("--ftp", type=float, default=0.0,
                    help="your FTP in watts for the overlay's %%FTP and zone (0 = estimate: 95%% of your best "
                         "20 min in past rides)")
+    c = ap.add_argument_group("coach (settings.json keys: rider_kg, weekly_rides, weekly_minutes, comfort_break)")
+    c.add_argument("--workout", choices=WORKOUT_KEYS + ("suggested",), default=None,
+                   help="ride a guided workout on the overlay (python -m bridge.workouts lists them)")
+    c.add_argument("--menu", action="store_true",
+                   help="at the start, offer today's suggested workout and the list (ride.bat uses this)")
+    c.add_argument("--comfort-break", type=float, default=20.0,
+                   help="stand-up-and-stretch reminder every N minutes of riding (0 = off)")
+    c.add_argument("--weekly-rides", type=int, default=3, help="weekly goal: rides (or --weekly-minutes)")
+    c.add_argument("--weekly-minutes", type=int, default=90, help="weekly goal: riding minutes")
     q.add_argument("--keep-days", type=float, default=30.0,
                    help="after a ride, delete bulky logs older than this (ride CSVs and summaries kept; 0 = never)")
     ap.add_argument("--log-dir", type=Path, default=LOG_DIR)
@@ -107,6 +121,37 @@ def parse_args(argv=None) -> argparse.Namespace:
     if args.gear is None:
         args.gear = d.gear_ratio if args.speed_source == "trainer" else 2.0
     return args
+
+
+def choose_workout(coach: Coach, timeout_s: float = 20.0):
+    """Start menu: Enter or 20 s = free ride, 1 = today's suggestion, 2.. = any workout."""
+    if not sys.stdin or not sys.stdin.isatty():
+        return None
+    from .workouts import title_of
+
+    key, why = coach.suggest()
+    options = [key] + [k for k in WORKOUT_KEYS if k != key]
+    print(coach.brief_text() if coach.rides else "first ride: welcome!")
+    print("\nRide:  [Enter] free ride")
+    for i, k in enumerate(options, 1):
+        print(f"       [{i}] {title_of(k, coach)}" + ("   <- suggested" if i == 1 else ""))
+    print(f"Choose (free ride in {timeout_s:.0f} s): ", end="", flush=True)
+    try:
+        import msvcrt
+    except ImportError:
+        return None
+    end = time.monotonic() + timeout_s
+    while time.monotonic() < end:
+        if msvcrt.kbhit():
+            ch = msvcrt.getwch()
+            if ch.isdigit() and 1 <= int(ch) <= len(options):
+                print(ch)
+                return options[int(ch) - 1]
+            print("free ride")
+            return None
+        time.sleep(0.05)
+    print("free ride")
+    return None
 
 
 def drive_config(args: argparse.Namespace) -> DriveConfig:
@@ -156,22 +201,53 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
     hotkeys = Hotkeys(enabled=bool(args.hotkeys))
     actuator.on_home = lambda: cues.play("resync")
     stats = LiveStats()
-    ftp, ftp_estimated = args.ftp, False
-    if not ftp:
-        try:
-            ftp = estimate_ftp(ride_history(Path(args.log_dir))) or 0.0
-            ftp_estimated = bool(ftp)
-        except Exception:
-            log.exception("could not estimate FTP")
-            ftp = 0.0
-    overlay = Overlay(lambda: stats.snapshot(time.monotonic(), ftp, ftp_estimated, args.units, state["paused"]),
+    try:
+        coach = Coach.from_settings(Path(args.log_dir), exclude=ride.path, rider_kg=args.rider_kg, ftp=args.ftp)
+        coach.weekly_rides, coach.weekly_minutes = max(1, args.weekly_rides), max(10, args.weekly_minutes)
+    except Exception:
+        log.exception("could not load the ride book")
+        coach = Coach([], args.ftp)
+    ftp, ftp_source = coach.ftp()
+    ftp_estimated = ftp_source == "estimate"
+    workout_key = args.workout
+    if workout_key == "suggested":
+        workout_key = coach.suggest()[0]
+    if args.menu and workout_key is None and source_fn is None:
+        workout_key = choose_workout(coach)
+    runner = None
+    if workout_key:
+        runner = WorkoutRunner(build_workout(workout_key, ftp or 150, coach.long_ride_target_min()), ftp)
+    records = coach.records()
+    companion = Companion({d: w for d, (w, _) in records["curve"].items()}, coach.lifetime()["miles"],
+                          0 if workout_key == "long" else args.comfort_break)
+    overlay = Overlay(lambda: stats.snapshot(time.monotonic(), ftp, ftp_estimated, args.units, state["paused"],
+                                             state.get("workout_status"), current_message()),
                       enabled=bool(args.overlay) and source_fn is None and sys.platform == "win32")
     state = {"conn": "starting", "power": None, "cadence": None,
              "out": DriveOutput(0.0, 0.0, 0.0, 0.0), "limit": None,
-             "paused": False, "pedalled_at": None, "had_data": False, "focused": None, "launched": False}
-    log.info("start dry_run=%s mode=%s speed_source=%s units=%s deadzone=%.2f drive=%s limit=%s mapper=%s sim=%s",
-             args.dry_run, args.mode, args.speed_source, args.units, args.deadzone, controller.config,
-             planner.config, mapper.config, args.sim)
+             "paused": False, "pedalled_at": None, "had_data": False, "focused": None, "launched": False,
+             "paused_total": 0.0, "paused_at": None, "message": None, "message_until": 0.0, "greeted": False}
+
+    def current_message():
+        return state["message"] if time.monotonic() < state["message_until"] else None
+
+    def say(cue: str, message: str, seconds: float = 8.0) -> None:
+        """Coach message on the overlay (and console) with an optional beep."""
+        if cue:
+            cues.play(cue)
+        state["message"], state["message_until"] = message, time.monotonic() + seconds
+        log.info("coach: %s", message)
+        print("\n" + message.replace("·", "-"), flush=True)  # the console code page lacks the dot
+
+    def ride_time(now: float) -> float:
+        """Seconds of riding since the first pedal stroke, paused time left out."""
+        if stats.started_at is None:
+            return 0.0
+        paused = state["paused_total"] + (now - state["paused_at"] if state["paused_at"] is not None else 0.0)
+        return max(0.0, now - stats.started_at - paused)
+    log.info("start dry_run=%s mode=%s speed_source=%s units=%s deadzone=%.2f drive=%s limit=%s mapper=%s sim=%s "
+             "workout=%s ftp=%.0f(%s)", args.dry_run, args.mode, args.speed_source, args.units, args.deadzone,
+             controller.config, planner.config, mapper.config, args.sim, workout_key, ftp, ftp_source)
     c = controller.config
     how = ("game holds speed at the limit: speed control ON, limit mode, Slow Roads focused"
            if args.mode == "limit" else f"top {c.top_speed_kmh:.0f} km/h, max throttle {c.max_throttle}")
@@ -184,6 +260,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
              if overlay.enabled and ftp else "overlay:   top right of the game; set --ftp for %FTP and zones\n"
              if overlay.enabled else "")
           + (f"auto-end:  after {args.idle_end:g} min without pedalling\n" if args.idle_end > 0 else "")
+          + (coach.brief_text() + "\n" if coach.rides else "")
+          + (f"workout:   {runner.w.title}: {runner.w.blurb}\n" if runner else "")
           + "Ctrl+C to stop\n", flush=True)
 
     def launch_game() -> None:
@@ -220,6 +298,11 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             cues.play("gear")
         elif action == "pause":
             state["paused"] = not state["paused"]
+            if state["paused"]:
+                state["paused_at"] = now
+            elif state["paused_at"] is not None:
+                state["paused_total"] += now - state["paused_at"]
+                state["paused_at"] = None
             log.info("hotkey: %s", "paused" if state["paused"] else "resumed")
             print("\n" + ("PAUSED: throttle off, speed limit left alone. F8 to resume" if state["paused"]
                           else "resumed"), flush=True)
@@ -356,7 +439,28 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                                  state["out"], ride.packet_rate(now), ride.bad_packets,
                                  limit=None if args.mode != "limit" else (state["limit"], args.units))
             print("\r" + line, end="", flush=True)
+            if stats.started_at is not None and not state["paused"]:
+                coach_tick(now)
             await asyncio.sleep(1.0)
+
+    def coach_tick(now: float) -> None:
+        """Once a second while riding: workout progress, stand-up breaks, live bests, milestones."""
+        t_ride = ride_time(now)
+        if not state["greeted"]:
+            state["greeted"] = True
+            w = coach.week(0)
+            n, goal = w["rides"] + 1, coach.weekly_rides
+            progress = f"RIDE {n} OF {goal} THIS WEEK" if n <= goal else f"RIDE {n} THIS WEEK · GOAL MET"
+            say("", f"{progress} · STREAK {coach.streak_weeks()} WK", 10)
+        events = []
+        if runner is not None:
+            status, ev = runner.update(t_ride, stats.avg(3.5, now)[0], stats.cadence)
+            state["workout_status"] = status
+            events += ev
+        in_break = bool(state.get("workout_status") and state["workout_status"]["target"] is None)
+        events += companion.update(t_ride, stats.rolling(now), stats.distance_km / 1.609344, in_break)
+        for cue, message in events:
+            say(cue, message, 12 if cue == "break" else 8)
 
     if source_fn is not None:
         source = source_fn(on_packet, on_state)
@@ -424,22 +528,36 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             pass
         log.info("stop packets=%d bad=%d", ride.packets, ride.bad_packets)
         print(f"\n{ride.packets} packets ({ride.bad_packets} bad) -> {ride.path}")
-        try:
-            history = ride_history(Path(args.log_dir), exclude=ride.path, rider_kg=args.rider_kg)
-        except Exception:
-            log.exception("could not read earlier rides")
-            history = []
-        try:  # cycling metrics from the trainer's data only, never the game, plus tips for next time
-            text, saved = write_summary(ride.path, args.rider_kg, [r for _, r, _ in history], args.ftp)
+        ftp_set = args.ftp
+        if runner is not None and runner.w.ramp:  # ramp test: FTP = 75% of the best minute
+            if runner.result_ftp is None and runner.best_minute and runner._idx >= 6:
+                runner._ramp_finish()
+            if runner.result_ftp:
+                ftp_set = runner.result_ftp
+                try:
+                    settings.save_pref("ftp", ftp_set)
+                    print(f"\nRamp test: FTP {ftp_set} W (75% of your best minute, "
+                          f"{runner.best_minute:.0f} W). Saved to settings.json.", flush=True)
+                except Exception:
+                    log.exception("could not save FTP")
+        try:  # summary, coach report and scoreboard, from the trainer's data only
+            current = summarize_csv(ride.path, args.rider_kg)
+            this = analyse_ride(ride.path, args.rider_kg)
+            board = Coach(coach.rides + ([this] if this else []), ftp_set, coach.weekly_rides, coach.weekly_minutes)
+            text = format_summary(current)
+            if this is not None:
+                text += "\n" + board.ride_report(this)
+            text += format_advice(advice(current, None, ftp_set))
+            if this is not None:
+                text += "\n\n" + board.scoreboard_text()
+            saved = save_summary(ride.path, text)
             print("\n" + text + (f"\nsaved: {saved}" if saved else ""), flush=True)
+            if coach.rides and current.moving_s >= 60:
+                prev = coach.rides[-1]
+                print(compare_line(current, SimpleNamespace(moving_s=prev.moving_s, avg_power_w=prev.avg_w,
+                                                            work_kj=prev.work_kj)), flush=True)
         except Exception:
             log.exception("could not summarize the ride")
-        try:  # one line against the previous real ride
-            current = summarize_csv(ride.path, args.rider_kg)
-            if history and current.moving_s >= 60:
-                print(compare_line(current, history[-1][1]), flush=True)
-        except Exception:
-            log.exception("could not compare with the last ride")
         try:
             removed = remove(old_entries(Path(args.log_dir), args.keep_days, active=stamp))
             if removed:

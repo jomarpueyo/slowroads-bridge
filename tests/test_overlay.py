@@ -22,7 +22,7 @@ def test_rolling_averages_and_full_windows():
     assert one == pytest.approx(200) and full1
     assert five == pytest.approx(200) and full5
     assert ten == pytest.approx(150, abs=1) and full10
-    assert len(s.samples) <= 601                      # only the last 10 min is kept
+    assert len(s.samples) <= 1201                     # only the last 20 min is kept
 
 
 def test_averages_wait_for_the_first_pedal_stroke_and_mark_partial_windows():

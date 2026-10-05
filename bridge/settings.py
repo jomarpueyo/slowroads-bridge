@@ -26,7 +26,9 @@ KEYS = ("gear", "accel", "coast", "drag_quad", "brake_rate", "top_speed", "deadz
         # idle_end is minutes without pedalling before the ride ends, keep_days is log retention.
         "sounds", "hotkeys", "launch_game", "idle_end", "keep_days",
         # overlay: 0/1; ftp: functional threshold power in watts (0 = estimate from past rides)
-        "overlay", "ftp")
+        "overlay", "ftp",
+        # coach: rider + bike kg, weekly goal (rides, minutes), stand-up break interval in minutes (0 = off)
+        "rider_kg", "weekly_rides", "weekly_minutes", "comfort_break")
 # Bluetooth address as Windows/bleak report it: six hex pairs.
 ADDRESS_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 

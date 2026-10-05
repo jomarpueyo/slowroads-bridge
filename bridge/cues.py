@@ -22,6 +22,11 @@ TONES = {
     "resumed": [(500, 110), (750, 170)],
     "gear": [(700, 70)],
     "ride_end": [(880, 150), (660, 150), (440, 350)],
+    "break": [(600, 150), (800, 150), (600, 200)],          # stand up and stretch
+    "record": [(784, 100), (988, 100), (1175, 260)],         # new personal best / FTP result
+    "milestone": [(660, 120), (990, 240)],                   # lifetime miles, halfway, last 5 min
+    "block": [(880, 90), (880, 90)],                         # workout block change
+    "workout_done": [(660, 120), (880, 120), (1175, 300)],
 }
 
 

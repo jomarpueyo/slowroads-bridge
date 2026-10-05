@@ -38,7 +38,7 @@ class LiveStats:
     """Rolling power averages, distance and ride time, fed by the bridge."""
 
     def __init__(self) -> None:
-        self.samples: deque = deque()  # (t, watts), one per trainer packet (1 Hz), last 10 min
+        self.samples: deque = deque()  # (t, watts), one per trainer packet (1 Hz), last 20 min
         self.cadence = None
         self.started_at = None       # first pedal stroke
         self.distance_km = 0.0
@@ -48,7 +48,7 @@ class LiveStats:
         if watts is None:
             return
         self.samples.append((t, float(watts)))
-        while self.samples and self.samples[0][0] < t - 600:
+        while self.samples and self.samples[0][0] < t - 1200:
             self.samples.popleft()
 
     def start(self, t: float) -> None:
@@ -68,7 +68,16 @@ class LiveStats:
             return None, False
         return sum(window) / len(window), now - self.started_at >= seconds
 
-    def snapshot(self, now: float, ftp: float, ftp_estimated: bool, units: str, paused: bool) -> dict:
+    def rolling(self, now: float, durations=(60, 300, 1200)) -> dict:
+        """{duration: average W over the last `duration` s, only once a full window has been ridden}."""
+        out = {}
+        for d in durations:
+            v, full = self.avg(d, now)
+            out[d] = v if full else None
+        return out
+
+    def snapshot(self, now: float, ftp: float, ftp_estimated: bool, units: str, paused: bool,
+                 workout: dict | None = None, message: str | None = None) -> dict:
         p3, _ = self.avg(3.5, now)
         return {
             "elapsed": 0.0 if self.started_at is None else now - self.started_at,
@@ -78,6 +87,7 @@ class LiveStats:
             "avgs": [("1 MIN",) + self.avg(60, now), ("5 MIN",) + self.avg(300, now),
                      ("10 MIN",) + self.avg(600, now)],
             "ftp": ftp, "ftp_estimated": ftp_estimated, "paused": paused,
+            "workout": workout, "message": message,
         }
 
 
@@ -167,12 +177,34 @@ def render(snap: dict, scale: float = 1.0):
         widths = [max(size(v, font)[0], _tracked_width(lab, f["label"], track)) for v, lab, _ in cells]
         return widths, sum(widths) + col_gap * (len(cells) - 1)
 
+    # optional workout row: block, time left, target (coloured by whether you're on it), cadence target
+    wk = snap.get("workout")
+    work = []
+    if wk:
+        state_c = {"ok": (130, 225, 140, 240), "low": (255, 195, 90, 240), "high": (255, 150, 110, 240)}
+        work.append((f"{wk['index']}/{wk['count']}", wk["block"].upper()[:18], white))
+        work.append((_fmt_time(wk["left"]), "LEFT", white))
+        if wk["target"]:
+            lo, hi = wk["target"]
+            work.append((f"{lo:.0f}-{hi:.0f}", "TARGET W", state_c.get(wk["state"], white)))
+        else:
+            work.append(("EASY", "ANY POWER", white))
+        if wk.get("cadence"):
+            work.append((f"{wk['cadence'][0]}-{wk['cadence'][1]}", "RPM TARGET", white))
+    message = snap.get("message")
+
     w_top, total_top = row_layout(top, f["big"])
     w_bot, total_bot = row_layout(bottom, f["mid"])
+    w_wk, total_wk = row_layout(work, f["mid"]) if work else ([], 0)
     big_h, mid_h, lab_h = size("0", f["big"])[1], size("0", f["mid"])[1], size("M", f["label"])[1]
     lab_gap = int(7 * scale)
-    width = max(total_top, total_bot) + 2 * pad + int(18 * scale)
+    msg_w = size(message, f["mid"])[0] if message else 0
+    width = max(total_top, total_bot, total_wk, msg_w) + 2 * pad + int(18 * scale)
     height = pad * 2 + big_h + lab_gap + lab_h + row_gap * 2 + mid_h + lab_gap + lab_h
+    if work:
+        height += row_gap * 2 + mid_h + lab_gap + lab_h
+    if message:
+        height += row_gap * 2 + mid_h
 
     text = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(text)
@@ -195,6 +227,14 @@ def render(snap: dict, scale: float = 1.0):
         r = int(4 * scale)
         cx, cy = width - pad + int(8 * scale), y2 + mid_h // 2 + int(2 * scale)
         d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=z[1] + (230,))
+    y = y2 + mid_h + lab_gap + lab_h
+    if work:
+        y += row_gap * 2
+        draw_row(work, w_wk, total_wk, f["mid"], y, mid_h)
+        y += mid_h + lab_gap + lab_h
+    if message:  # coach message: stand-up break, new best, milestone, next block
+        y += row_gap * 2
+        d.text((width - pad - msg_w, y), message, font=f["mid"], fill=(255, 225, 150, 245), anchor="la")
 
     # soft shadow so it reads on bright sky and dark road alike
     alpha = text.getchannel("A")
