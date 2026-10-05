@@ -9,8 +9,6 @@ controller. It uses no game mods, no memory reading and no game telemetry.
 
 > Windows only. Personal hobby project, not affiliated with Wahoo, Zwift or Slow Roads' developer.
 
-![Slow Roads with the trainer-data overlay at the top right: ride time, miles, watts, cadence, 1/5/10 min power, %FTP and a stand-up reminder](docs/images/overlay-ride.jpg)
-
 A small overlay sits at the top right of the game: ride time, virtual miles, watts and cadence, your 1, 5
 and 10 minute average power, and your share of FTP with its zone colour. Short coach messages pop up
 underneath with a beep, so long rides are easier and you remember the basics:
