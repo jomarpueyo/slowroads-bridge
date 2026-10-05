@@ -229,7 +229,7 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             overlay.toggle()
             log.info("hotkey: overlay %s", "on" if overlay.visible else "off")
         elif action == "resync" and args.mode == "limit":
-            actuator.current = None  # next tick scrolls to the floor and climbs back to the limit
+            state["resync_request"] = True  # done in the output loop: floor and straight back, ~1 s
             log.info("hotkey: re-sync limit")
             print("\nre-syncing the speed limit (car dips for a moment)", flush=True)
 
@@ -277,7 +277,12 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         while True:
             now = time.monotonic()
             active = not mapper.is_stale(now)
-            for action in hotkeys.poll(actuator.game_focused()):
+            focused = actuator.game_focused()
+            if not focused:
+                state["focused_since"] = None
+            elif state.get("focused_since") is None:
+                state["focused_since"] = now
+            for action in hotkeys.poll(focused):
                 on_hotkey(action, now)
             if active != state["had_data"]:
                 cues.play("connected" if active else "trainer_lost")
@@ -305,7 +310,15 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 if planner.state == "riding":
                     throttle = planner.push_throttle(throttle, push)
                 state["plan"] = f"push x{push:.2f}" if push > 1.05 and planner.state == "riding" else planner.state
-                actuator.step_toward(desired, now, planner.config.max_notches_per_s)
+                if planner.state != "riding":
+                    state["riding_since"] = None
+                elif state.get("riding_since") is None:
+                    state["riding_since"] = now
+                if state.pop("resync_request", False) or actuator.needs_confirming(
+                        now, state.get("focused_since"), state.get("riding_since")):
+                    actuator.resync(desired, now)  # one ~1 s burst; also confirms the count after start-up
+                else:
+                    actuator.step_toward(desired, now, planner.config.max_notches_per_s)
                 state["limit"] = actuator.current
                 limit_kmh = 0.0 if actuator.current is None else display_to_kmh(actuator.current, args.units)
                 # In limit mode car_est_kmh logs the limit the game is holding the car to.

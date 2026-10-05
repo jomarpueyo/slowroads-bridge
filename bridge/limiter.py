@@ -25,6 +25,7 @@ STEP = 5          # display units per wheel notch
 MIN_LIMIT = 5
 MAX_LIMIT = 125
 RESYNC_EXTRA = 4  # extra down notches when homing to the floor
+CONFIRM_AFTER_S = 20.0  # game in front and rider pedalling this long -> one confirming resync burst
 
 
 @dataclass
@@ -188,6 +189,8 @@ class WheelActuator:
         # bridge re-homes whenever it leaves the floor after stepping there.
         self._homed = False
         self._homes = 0
+        self.confirmed = False  # a resync() burst succeeded while the game was surely on the road
+        self._last_confirm_try = float("-inf")
         self.on_home = None  # optional callback after each successful home (sound cue)
         self._last_notch = 0.0
         self._game = None
@@ -244,6 +247,36 @@ class WheelActuator:
         if self.on_home:
             self.on_home()
         return True
+
+    def resync(self, target: int | None = None, now: float | None = None) -> bool:
+        """Scroll to the floor and straight back up to `target` in one burst (about 1 s at 30 ms per
+        notch), so the count is known without the rider stopping. The car dips for that second."""
+        if now is not None:
+            self._last_confirm_try = now
+        if not self.game_focused():
+            return False
+        target = MIN_LIMIT if target is None else max(MIN_LIMIT, min(MAX_LIMIT, target))
+        down = (MAX_LIMIT - MIN_LIMIT) // STEP + RESYNC_EXTRA
+        if self._scroll(-down) < down:
+            return False
+        up = (target - MIN_LIMIT) // STEP
+        sent = self._scroll(up)
+        self.current = MIN_LIMIT + sent * STEP
+        self._homed = sent == 0
+        self._homes += 1
+        self.confirmed = sent == up
+        log.info("limit re-synced to %d%s", self.current, "" if self.confirmed else " (interrupted)")
+        if self.on_home:
+            self.on_home()
+        return self.confirmed
+
+    def needs_confirming(self, now: float, focused_since, riding_since) -> bool:
+        """True once per run: the game has been in front and the rider pedalling for CONFIRM_AFTER_S.
+        Earlier homes can all land on a loading screen or menu (ride 2026-10-04 17:42: the game was still
+        loading behind an MSI Center pop-up when riding began, and the limit ran 30 mph high all ride)."""
+        return (not self.confirmed and self.current is not None and focused_since is not None
+                and riding_since is not None and now - focused_since >= CONFIRM_AFTER_S
+                and now - riding_since >= CONFIRM_AFTER_S and now - self._last_confirm_try >= 5.0)
 
     def step_toward(self, desired: int, now: float, max_per_s: float) -> None:
         """Send at most one notch per call, rate-limited. Re-sync when going to the floor."""

@@ -88,7 +88,9 @@ The keys are only read, never taken over, so they still reach the game. `--no-ho
 **Don't touch the mouse wheel over the game during a ride.** The bridge changes the limit by
 scrolling, and it counts its own scrolls. It briefly moves the cursor to the left side of the
 screen to scroll, then puts it back. If the limit ever looks wrong, press F9 (or stop pedalling for a few
-seconds): going back to 5 mph re-syncs the count.
+seconds): going back to 5 mph re-syncs the count. About 20 s into every ride (game in front, you
+pedalling) it re-syncs once by itself, because the game may still have been loading when you started:
+expect one short dip in speed then (two short beeps).
 
 The status line reads:
 `03:12 connected   185W  82rpm tgt  45 limit  30mph thr 60% brk  0% 1.0Hz bad 0`

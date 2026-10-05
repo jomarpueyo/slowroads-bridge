@@ -390,3 +390,43 @@ def test_start_up_home_on_the_main_menu_is_fixed_before_riding(monkeypatch):
         t += 0.3
         a.step_toward(35, t, 4.0)
     assert a.current == 35 and game.limit == 35
+
+
+def test_confirming_resync_fixes_a_count_lost_while_the_game_loaded(monkeypatch):
+    # Ride 2026-10-04 17:42: the game was still loading (an MSI Center pop-up on top) through both the
+    # start-up home and the first departure from the floor; the padlock read 45 while the count said 15,
+    # and with no stop all ride the limit stayed 30 mph high.
+    a = real_actuator(FakeWin(), monkeypatch)
+    game = GameModel(limit=45)
+    game.menu_open = True                                        # loading: wheel does nothing
+    a._user32 = game
+    t = 0.0
+    a.step_toward(MIN_LIMIT, t, 4.0)                             # start-up home (eaten)
+    for _ in range(10):                                          # rider starts: re-home (eaten), climb
+        t += 0.3
+        a.step_toward(20, t, 4.0)
+    game.menu_open = False                                       # now on the road; climbs reach the game
+    game.limit = 45 + 0                                          # still 45: the earlier notches were lost
+    for _ in range(8):
+        t += 0.3
+        a.step_toward(35, t, 4.0)
+    assert a.current == 35 and game.limit != 35                  # drifted
+    focused_since = riding_since = 1.0
+    assert not a.needs_confirming(15.0, focused_since, riding_since)   # not yet 20 s
+    assert a.needs_confirming(21.5, focused_since, riding_since)
+    assert a.resync(35, now=21.5)
+    assert a.current == 35 and game.limit == 35 and a.confirmed
+    assert not a.needs_confirming(60.0, focused_since, riding_since)   # once per run
+
+
+def test_resync_retries_are_spaced_and_wait_for_focus(monkeypatch):
+    win = FakeWin()
+    a = real_actuator(win, monkeypatch)
+    a.home()
+    win.focused = False
+    assert not a.resync(30, now=25.0) and not a.confirmed
+    assert not a.needs_confirming(27.0, 0.0, 0.0)                # retry no sooner than 5 s
+    win.focused = True
+    assert a.needs_confirming(30.5, 0.0, 0.0)
+    assert not a.needs_confirming(30.5, None, 0.0)               # game not in front
+    assert not a.needs_confirming(30.5, 0.0, None)               # not riding
