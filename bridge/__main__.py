@@ -110,6 +110,8 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="at the start, offer today's suggested workout and the list (ride.bat uses this)")
     c.add_argument("--comfort-break", type=float, default=20.0,
                    help="stand-up-and-stretch reminder every N minutes of riding (0 = off)")
+    c.add_argument("--no-drink", dest="drink", action="store_false", default=True,
+                   help="no 'drink water' reminder with the 15 min check-ins")
     c.add_argument("--weekly-rides", type=int, default=3, help="weekly goal: rides (or --weekly-minutes)")
     c.add_argument("--weekly-minutes", type=int, default=90, help="weekly goal: riding minutes")
     q.add_argument("--keep-days", type=float, default=30.0,
@@ -219,7 +221,7 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         runner = WorkoutRunner(build_workout(workout_key, ftp or 150, coach.long_ride_target_min()), ftp)
     records = coach.records()
     companion = Companion({d: w for d, (w, _) in records["curve"].items()}, coach.lifetime()["miles"],
-                          0 if workout_key == "long" else args.comfort_break)
+                          0 if workout_key == "long" else args.comfort_break, drink=bool(args.drink))
     overlay = Overlay(lambda: stats.snapshot(time.monotonic(), ftp, ftp_estimated, args.units, state["paused"],
                                              state.get("workout_status"), current_message()),
                       enabled=bool(args.overlay) and source_fn is None and sys.platform == "win32")

@@ -204,7 +204,7 @@ def render(snap: dict, scale: float = 1.0):
     if work:
         height += row_gap * 2 + mid_h + lab_gap + lab_h
     if message:
-        height += row_gap * 2 + mid_h
+        height += row_gap * 2 + mid_h + int(10 * scale)  # room for the message pill
 
     text = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(text)
@@ -234,7 +234,11 @@ def render(snap: dict, scale: float = 1.0):
         y += mid_h + lab_gap + lab_h
     if message:  # coach message: stand-up break, new best, milestone, next block
         y += row_gap * 2
-        d.text((width - pad - msg_w, y), message, font=f["mid"], fill=(255, 225, 150, 245), anchor="la")
+        # a soft dark pill behind the message only: reminders must read on bright sky too (they're easy to miss)
+        px, py = int(10 * scale), int(5 * scale)
+        d.rounded_rectangle((width - pad - msg_w - px, y - py, width - pad + px, y + mid_h + py + int(3 * scale)),
+                            radius=int(9 * scale), fill=(0, 0, 0, 120))
+        d.text((width - pad - msg_w, y), message, font=f["mid"], fill=(255, 225, 150, 250), anchor="la")
 
     # soft shadow so it reads on bright sky and dark road alike
     alpha = text.getchannel("A")

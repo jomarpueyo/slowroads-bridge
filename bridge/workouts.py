@@ -74,9 +74,9 @@ def build(key: str, ftp: float, long_min: int = 45) -> Workout:
         for i in range(1, n + 1):
             blocks.append(Block(f"Block {i}/{n}", block_s, *z2))
             if i < n:
-                blocks.append(Block("Stand & stretch", 60, None, None))
+                blocks.append(Block("Stand, stretch & drink", 60, None, None))
         return Workout(key, f"Long ride {long_min}", f"Steady Z2 in {n} blocks of {block_s // 60} min with a 1 min "
-                       "stand-up break between: easier on the seat and the mind.", blocks)
+                       "stand-up break (and a drink) between: easier on the seat and the mind.", blocks)
     if key == "ramp":
         start = max(60, round(ftp * 0.5 / 10) * 10 if ftp else 100)
         steps = [Block(f"Step {i + 1}", 60, watts=start + 20 * i) for i in range(30)]

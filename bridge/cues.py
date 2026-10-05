@@ -26,6 +26,7 @@ TONES = {
     "record": [(784, 100), (988, 100), (1175, 260)],         # new personal best / FTP result
     "milestone": [(660, 120), (990, 240)],                   # lifetime miles, halfway, last 5 min
     "block": [(880, 90), (880, 90)],                         # workout block change
+    "drink": [(1047, 70), (784, 70), (1047, 70)],            # 15 min check-in: drink water
     "workout_done": [(660, 120), (880, 120), (1175, 300)],
 }
 

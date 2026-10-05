@@ -187,7 +187,7 @@ def test_every_workout_builds(key):
 def test_long_ride_matches_its_target_with_stand_up_breaks():
     w = build("long", 200, 40)
     assert abs(w.seconds - 40 * 60) <= 60
-    assert sum(1 for b in w.blocks if b.name == "Stand & stretch") >= 1
+    assert sum(1 for b in w.blocks if b.name == "Stand, stretch & drink") >= 1
 
 
 def test_runner_blocks_targets_and_events():
@@ -230,7 +230,8 @@ def test_companion_breaks_records_and_milestones():
     assert c.update(60, {60: 180, 300: None, 1200: None}, 0.5) == []
     ev = c.update(15 * 60, {60: 205, 300: None, 1200: None}, 2.1)
     messages = [m for _, m in ev]
-    assert "15 MIN DONE" in messages and any(m.startswith("NEW BEST 1 MIN") for m in messages)
+    assert "15 MIN DONE · DRINK WATER" in messages and any(m.startswith("NEW BEST 1 MIN") for m in messages)
+    assert ("drink", "15 MIN DONE · DRINK WATER") in ev
     assert ("milestone", "50 LIFETIME MILES") in ev
     assert not any(m.startswith("NEW BEST 1 MIN") for _, m in c.update(15 * 60 + 2, {60: 206}, 2.2))  # once
     ev = c.update(20 * 60, {}, 3.0)
@@ -238,6 +239,18 @@ def test_companion_breaks_records_and_milestones():
     assert ("break", "STAND UP & STRETCH · 30 S") not in Companion({}, 0, 20).update(40 * 60, {}, 0, True)
     off = Companion({}, 0, comfort_break_min=0, checkin_min=0)
     assert off.update(3600, {}, 0) == []
+
+
+def test_drink_reminder_rides_with_the_check_ins_and_merges_with_breaks():
+    c = Companion({}, 0, comfort_break_min=20, checkin_min=15)
+    assert c.update(15 * 60, {}, 0) == [("drink", "15 MIN DONE · DRINK WATER")]
+    assert c.update(20 * 60, {}, 0) == [("break", "STAND UP & STRETCH · 30 S")]
+    assert c.update(30 * 60, {}, 0) == [("drink", "30 MIN DONE · DRINK WATER")]
+    c.update(40 * 60, {}, 0)
+    c.update(45 * 60, {}, 0)
+    assert c.update(60 * 60, {}, 0) == [("break", "60 MIN · STAND UP & STRETCH · DRINK WATER")]   # one, not two
+    quiet = Companion({}, 0, comfort_break_min=0, checkin_min=15, drink=False)
+    assert quiet.update(15 * 60, {}, 0) == [("", "15 MIN DONE")]
 
 
 # --------------------------------------------------------------------- through the bridge

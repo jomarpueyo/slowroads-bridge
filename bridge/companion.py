@@ -4,7 +4,8 @@
     which relieves the saddle on long rides.
   - Live personal bests: when your rolling 1 / 5 / 20 min power beats your record during the ride.
   - Lifetime milestones: crossing 10, 25, 50, 100 ... lifetime miles.
-  - A quiet check-in every 15 minutes ("30 MIN DONE") so a long ride feels like blocks, not one long slog.
+  - A check-in every 15 minutes with a reminder to drink ("30 MIN DONE · DRINK WATER", its own beep), so a
+    long ride feels like blocks and you keep drinking. --no-drink keeps the check-in without the reminder.
 Trainer data only.
 """
 
@@ -16,7 +17,8 @@ LIVE_RECORD_DURATIONS = (60, 300, 1200)
 
 class Companion:
     def __init__(self, records: dict, lifetime_miles: float, comfort_break_min: float = 20.0,
-                 checkin_min: float = 15.0) -> None:
+                 checkin_min: float = 15.0, drink: bool = True) -> None:
+        self.drink = drink                     # add "drink water" to each check-in (user forgets to drink)
         self.records = dict(records)           # duration s -> watts before this ride
         self.lifetime_miles = lifetime_miles
         self.comfort_s = comfort_break_min * 60
@@ -29,14 +31,20 @@ class Companion:
     def update(self, ride_s: float, rolling: dict, ride_miles: float, in_workout_break: bool = False) -> list:
         """[(cue, message)] for ride time `ride_s`; rolling = {duration: current rolling average W or None}."""
         out = []
+        stand = drink = None
         if ride_s >= self._next_break:
             self._next_break += self.comfort_s
-            if not in_workout_break:
-                out.append(("break", "STAND UP & STRETCH · 30 S"))
+            stand = not in_workout_break
         if ride_s >= self._next_checkin:
-            done = int(self._next_checkin // 60)
+            drink = int(self._next_checkin // 60)
             self._next_checkin += self.checkin_s
-            out.append(("", f"{done} MIN DONE"))
+        water = " · DRINK WATER" if self.drink else ""
+        if stand and drink is not None:  # both due (e.g. 60 min): one message
+            out.append(("break", f"{drink} MIN · STAND UP & STRETCH{water}"))
+        elif stand:
+            out.append(("break", "STAND UP & STRETCH · 30 S"))
+        elif drink is not None:
+            out.append(("drink" if self.drink else "", f"{drink} MIN DONE{water}"))
         for d in LIVE_RECORD_DURATIONS:
             w = rolling.get(d)
             old = self.records.get(d)

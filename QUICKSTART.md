@@ -59,13 +59,14 @@ green when you're on it, orange when off; a double beep marks each new block):
 | `cadence` | 34 min: 6 x 2 min fast spin (95-105 rpm) | smoother pedalling, higher cadence |
 | `tempo` | 3 x 6 min tempo | even pacing |
 | `sweetspot` | 2 x 10 min just under threshold | raising FTP |
-| `long` | your long ride: last longest + 5 min, in ~15 min blocks with 1 min stand-up breaks | long rides (saddle and mind) |
+| `long` | your long ride: last longest + 5 min, in ~15 min blocks with 1 min stand, stretch & drink breaks | long rides (saddle and mind) |
 | `ramp` | ramp test: 1 min steps +20 W until you can't hold one | **measures your FTP** (75% of your best minute) and saves it |
 
 The trainer is never controlled (data flows one way): you hold the target with your legs and gears.
 
 **During any ride** the overlay also shows short coach messages with a beep: **stand up & stretch** every
-20 min (`--comfort-break`, 0 = off), a check-in every 15 min, **new bests** live (1 / 5 / 20 min power) and
+20 min (`--comfort-break`, 0 = off), a check-in every 15 min with a **drink water** reminder and its own
+three-note beep (`--no-drink` or `"drink": 0` to drop it), **new bests** live (1 / 5 / 20 min power) and
 **lifetime mile milestones** (10, 25, 50, 100 ...).
 
 **After the ride** the summary adds training load (TSS and intensity, needs an FTP), time in zones, your

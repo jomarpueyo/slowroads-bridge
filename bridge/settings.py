@@ -28,7 +28,7 @@ KEYS = ("gear", "accel", "coast", "drag_quad", "brake_rate", "top_speed", "deadz
         # overlay: 0/1; ftp: functional threshold power in watts (0 = estimate from past rides)
         "overlay", "ftp",
         # coach: rider + bike kg, weekly goal (rides, minutes), stand-up break interval in minutes (0 = off)
-        "rider_kg", "weekly_rides", "weekly_minutes", "comfort_break")
+        "rider_kg", "weekly_rides", "weekly_minutes", "comfort_break", "drink")
 # Bluetooth address as Windows/bleak report it: six hex pairs.
 ADDRESS_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 
