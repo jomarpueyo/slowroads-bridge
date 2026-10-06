@@ -267,7 +267,8 @@ def render(snap: dict, scale: float = 1.0):
         work.append((_fmt_time(wk["left"]), "LEFT", white, None))
         if wk["target"]:
             lo, hi = wk["target"]
-            work.append((f"{lo:.0f}-{hi:.0f}", "TARGET W", state_c.get(wk["state"], white), None))
+            label = "ERG W" if wk.get("erg") else "TARGET W"  # ERG: the trainer holds it for you
+            work.append((f"{lo:.0f}-{hi:.0f}", label, state_c.get(wk["state"], white), None))
         else:
             work.append(("EASY", "ANY POWER", white, None))
         if wk.get("cadence"):

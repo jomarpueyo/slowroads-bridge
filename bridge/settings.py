@@ -30,7 +30,10 @@ KEYS = ("gear", "accel", "coast", "drag_quad", "brake_rate", "top_speed", "deadz
         # coach: rider + bike kg, weekly goal (rides, minutes), stand-up break interval in minutes (0 = off)
         "rider_kg", "weekly_rides", "weekly_minutes", "comfort_break", "drink",
         # overlay: seconds before numbers fade (0 = never), faded brightness
-        "overlay_fade", "overlay_dim")
+        "overlay_fade", "overlay_dim",
+        # trainer resistance (0/1 each): resistance = any control at all, erg = workout targets, road_feel =
+        # flat-road simulation otherwise, gravel = gravel rolling resistance; rumble = gravel texture 0..1
+        "resistance", "erg", "road_feel", "gravel", "rumble")
 # Bluetooth address as Windows/bleak report it: six hex pairs.
 ADDRESS_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 

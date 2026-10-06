@@ -26,6 +26,8 @@ from .companion import Companion
 from .ridebook import analyse as analyse_ride
 from .summary import advice, compare_line, format_advice, format_summary, save_summary, summarize_csv
 from .workouts import KEYS as WORKOUT_KEYS, WorkoutRunner, build as build_workout
+from .trainer import GRAVEL_CRR, Texture, TrainerControl, decide as decide_resistance
+from .gamestate import RoadWatcher
 from .ridelog import (ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, close_event_log, format_status,
                       setup_event_log, timestamp)
 
@@ -118,6 +120,19 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="no 'drink water' reminder with the 15 min check-ins")
     c.add_argument("--weekly-rides", type=int, default=3, help="weekly goal: rides (or --weekly-minutes)")
     c.add_argument("--weekly-minutes", type=int, default=90, help="weekly goal: riding minutes")
+    t = ap.add_argument_group("trainer resistance (settings.json keys: resistance, erg, road_feel, gravel, rumble)")
+    t.add_argument("--no-resistance", dest="resistance", action="store_false", default=True,
+                   help="never control the trainer's resistance (it stays as it is, like before 2026-10-05)")
+    t.add_argument("--no-erg", dest="erg", action="store_false", default=True,
+                   help="don't hold workout targets in ERG; use the road feel instead")
+    t.add_argument("--no-road-feel", dest="road_feel", action="store_false", default=True,
+                   help="no flat-road simulation outside ERG (the trainer's own default resistance)")
+    t.add_argument("--gravel", dest="gravel", action="store_const", const=True, default=None,
+                   help="force gravel road feel (default: follow the road chosen in Slow Roads; G in the menu)")
+    t.add_argument("--tarmac", dest="gravel", action="store_const", const=False,
+                   help="force tarmac road feel")
+    t.add_argument("--rumble", type=float, default=0.3,
+                   help="gravel texture: how much the rolling resistance wanders, 0 (smooth) to 1")
     q.add_argument("--keep-days", type=float, default=30.0,
                    help="after a ride, delete bulky logs older than this (ride CSVs and summaries kept; 0 = never)")
     ap.add_argument("--log-dir", type=Path, default=LOG_DIR)
@@ -129,10 +144,17 @@ def parse_args(argv=None) -> argparse.Namespace:
     return args
 
 
-def choose_workout(coach: Coach, timeout_s: float = 20.0):
-    """Start menu: Enter or 20 s = free ride, 1 = today's suggestion, 2.. = any workout."""
+def _surface_text(gravel, detected) -> str:
+    if gravel is None:
+        return f"auto (the game's road: {detected or 'unknown yet'})"
+    return "GRAVEL (forced)" if gravel else "tarmac (forced)"
+
+
+def choose_workout(coach: Coach, timeout_s: float = 20.0, gravel=None, detected=None):
+    """Start menu: Enter or 20 s = free ride, 1 = today's suggestion, 2.. = any workout, G = road surface
+    auto -> gravel -> tarmac. Returns (workout key or None, gravel: None = auto, True, False)."""
     if not sys.stdin or not sys.stdin.isatty():
-        return None
+        return None, gravel
     from .workouts import title_of
 
     key, why = coach.suggest()
@@ -141,23 +163,29 @@ def choose_workout(coach: Coach, timeout_s: float = 20.0):
     print("\nRide:  [Enter] free ride")
     for i, k in enumerate(options, 1):
         print(f"       [{i}] {title_of(k, coach)}" + ("   <- suggested" if i == 1 else ""))
+    print(f"       [G] road feel: {_surface_text(gravel, detected)} (press to switch)")
     print(f"Choose (free ride in {timeout_s:.0f} s): ", end="", flush=True)
     try:
         import msvcrt
     except ImportError:
-        return None
+        return None, gravel
     end = time.monotonic() + timeout_s
     while time.monotonic() < end:
         if msvcrt.kbhit():
             ch = msvcrt.getwch()
+            if ch in ("g", "G"):
+                gravel = True if gravel is None else (False if gravel else None)
+                print(f"\n       road feel: {_surface_text(gravel, detected)}\nChoose: ", end="", flush=True)
+                end = time.monotonic() + timeout_s
+                continue
             if ch.isdigit() and 1 <= int(ch) <= len(options):
                 print(ch)
-                return options[int(ch) - 1]
+                return options[int(ch) - 1], gravel
             print("free ride")
-            return None
+            return None, gravel
         time.sleep(0.05)
     print("free ride")
-    return None
+    return None, gravel
 
 
 def drive_config(args: argparse.Namespace) -> DriveConfig:
@@ -215,23 +243,37 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         coach = Coach([], args.ftp)
     ftp, ftp_source = coach.ftp()
     ftp_estimated = ftp_source == "estimate"
+    if args.gravel is not None:  # settings.json "gravel": 0/1 forces it like --tarmac/--gravel
+        args.gravel = bool(args.gravel)
+    road = RoadWatcher()
+    if source_fn is None:
+        road.poll(0.0)  # the road chosen in Slow Roads (bridge/gamestate.py), refreshed every 15 s
     workout_key = args.workout
     if workout_key == "suggested":
         workout_key = coach.suggest()[0]
     if args.menu and workout_key is None and source_fn is None:
-        workout_key = choose_workout(coach)
+        workout_key, args.gravel = choose_workout(coach, gravel=args.gravel, detected=road.surface)
     runner = None
     if workout_key:
         runner = WorkoutRunner(build_workout(workout_key, ftp or 150, coach.long_ride_target_min()), ftp)
     records = coach.records()
     companion = Companion({d: w for d, (w, _) in records["curve"].items()}, coach.lifetime()["miles"],
                           0 if workout_key == "long" else args.comfort_break, drink=bool(args.drink))
+    control = TrainerControl(enabled=bool(args.resistance) and not args.dry_run,
+                             on_event=lambda mode, label: on_trainer_event(mode, label))
+    texture = Texture(GRAVEL_CRR, args.rumble) if args.rumble > 0 else None
+
+    def on_gravel() -> bool:
+        return args.gravel if args.gravel is not None else road.surface == "gravel"
     attention = Attention(args.overlay_fade, args.overlay_dim)
 
     def overlay_snapshot() -> dict:
         now = time.monotonic()
+        wk = state.get("workout_status")
+        if wk is not None:
+            wk = {**wk, "erg": control.applied is not None and control.applied.mode == "erg"}
         return attention.apply(stats.snapshot(now, ftp, ftp_estimated, args.units, state["paused"],
-                                              state.get("workout_status"), current_message()), now)
+                                              wk, current_message()), now)
 
     overlay = Overlay(overlay_snapshot,
                       enabled=bool(args.overlay) and source_fn is None and sys.platform == "win32")
@@ -251,6 +293,15 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         log.info("coach: %s", message)
         print("\n" + message.replace("·", "-"), flush=True)  # the console code page lacks the dot
 
+    def on_trainer_event(mode: str, label: str) -> None:
+        """Say when ERG takes over or lets go (the road feel itself is quiet)."""
+        previous = state.get("trainer_mode")
+        state["trainer_mode"] = mode
+        if mode == "erg" and previous != "erg":
+            say("", f"ERG ON · TRAINER HOLDS {label.split()[1]} W", 5)
+        elif mode == "sim" and previous == "erg":
+            say("", "ERG OFF · ROAD FEEL", 5)
+
     def ride_time(now: float) -> float:
         """Seconds of riding since the first pedal stroke, paused time left out."""
         if stats.started_at is None:
@@ -258,8 +309,11 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         paused = state["paused_total"] + (now - state["paused_at"] if state["paused_at"] is not None else 0.0)
         return max(0.0, now - stats.started_at - paused)
     log.info("start dry_run=%s mode=%s speed_source=%s units=%s deadzone=%.2f drive=%s limit=%s mapper=%s sim=%s "
-             "workout=%s ftp=%.0f(%s)", args.dry_run, args.mode, args.speed_source, args.units, args.deadzone,
-             controller.config, planner.config, mapper.config, args.sim, workout_key, ftp, ftp_source)
+             "workout=%s ftp=%.0f(%s) resistance=%s erg=%s road_feel=%s gravel=%s rumble=%.2f",
+             args.dry_run, args.mode, args.speed_source, args.units, args.deadzone,
+             controller.config, planner.config, mapper.config, args.sim, workout_key, ftp, ftp_source,
+             control.enabled, args.erg, args.road_feel, "auto:" + str(road.surface) if args.gravel is None
+             else args.gravel, args.rumble)
     c = controller.config
     how = ("game holds speed at the limit: speed control ON, limit mode, Slow Roads focused"
            if args.mode == "limit" else f"top {c.top_speed_kmh:.0f} km/h, max throttle {c.max_throttle}")
@@ -274,6 +328,12 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
           + (f"auto-end:  after {args.idle_end:g} min without pedalling\n" if args.idle_end > 0 else "")
           + (coach.brief_text() + "\n" if coach.rides else "")
           + (f"workout:   {runner.w.title}: {runner.w.blurb}\n" if runner else "")
+          + ((f"trainer:   " + ", ".join(
+              ([("ERG holds workout targets" if runner else "ERG in workouts")] if args.erg else [])
+              + ([f"road feel {_surface_text(args.gravel, road.surface)}"
+                  + (" (gravel rumble on)" if args.rumble > 0 else "")] if args.road_feel else []))
+              + "  (F8 pause = easy)\n") if control.enabled and (args.erg or args.road_feel) else
+             "trainer:   resistance not controlled\n")
           + "Ctrl+C to stop\n", flush=True)
 
     def launch_game() -> None:
@@ -382,6 +442,16 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             if active != state["had_data"]:
                 cues.play("connected" if active else "trainer_lost")
                 state["had_data"] = active
+            if control.enabled:  # resistance: ERG for workout targets, road feel otherwise (bridge/trainer.py)
+                cad = state.get("cadence")
+                if cad is None or cad < 45:
+                    state["low_cad_s"] = state.get("low_cad_s", 0.0) + (now - last)
+                elif cad >= 55:
+                    state["low_cad_s"] = 0.0
+                control.set_want(decide_resistance(
+                    True, state.get("workout_status"), state["paused"],
+                    active and state.get("low_n", 0) < 2, cad, state.get("low_cad_s", 0.0),
+                    on_gravel(), bool(args.road_feel), bool(args.erg), texture, now))
             if state["paused"]:
                 out = DriveOutput(0.0, 0.0, 0.0, state["out"].car_est_kmh)
                 state["out"], state["plan"] = out, "paused"
@@ -451,6 +521,11 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                                  state["out"], ride.packet_rate(now), ride.bad_packets,
                                  limit=None if args.mode != "limit" else (state["limit"], args.units))
             print("\r" + line, end="", flush=True)
+            if args.gravel is None and source_fn is None:
+                changed = road.poll(now)
+                if changed:  # the road picked at start-up came from road.poll(0.0), so this is a real change
+                    say("", f"ROAD: {changed.upper()}" + (" · GRAVEL FEEL" if changed == "gravel" else ""), 5)
+                    log.info("road surface from the game: %s (%s)", changed, road.world)
             if stats.started_at is not None and not state["paused"]:
                 coach_tick(now)
             await asyncio.sleep(1.0)
@@ -503,7 +578,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             except Exception:
                 log.exception("could not save trainer address")
 
-        source = run_reader(on_packet, on_state, args.name, address=address, on_connected=on_paired)
+        source = run_reader(on_packet, on_state, args.name, address=address, on_connected=on_paired,
+                            control=control if control.enabled else None)
     overlay.start()
 
     async def idle_watch() -> None:
@@ -521,6 +597,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
 
     tasks = [asyncio.ensure_future(source), asyncio.ensure_future(output_loop()),
              asyncio.ensure_future(status_loop()), asyncio.ensure_future(idle_watch())]
+    if control.enabled:
+        tasks.append(asyncio.ensure_future(control.run()))
     try:
         # The ride ends when the data source finishes (simulated/fuzzed rides) or on Ctrl+C. An error in
         # any loop ends it too and is re-raised, so crash reporting sees it instead of it being swallowed.
@@ -528,6 +606,10 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         for t in done:
             t.result()
     finally:
+        try:  # hand the trainer back while still connected (before the reader task is cancelled)
+            await asyncio.wait_for(control.release(), 3.0)
+        except BaseException as e:  # incl. a second Ctrl+C: never block shutdown on this
+            log.warning("trainer release skipped: %r", e)
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -559,7 +641,7 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             text = format_summary(current)
             if this is not None:
                 text += "\n" + board.ride_report(this)
-            text += format_advice(advice(current, None, ftp_set))
+            text += format_advice(advice(current, None, ftp_set, workout_key))
             if this is not None:
                 text += "\n\n" + board.scoreboard_text()
             saved = save_summary(ride.path, text)

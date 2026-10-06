@@ -88,7 +88,9 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
 2. Double-click **`ride.bat`**.
 3. In Slow Roads: assist **AUTOSTEER**, gearbox **Automatic**, **speed control on in limit mode** (the
    padlock by the speedometer), and keep the game window focused.
-4. Pick a free ride or a workout from the start menu (or press Enter), then pedal. Press Ctrl+C to
+4. Pick a free ride or a workout from the start menu (or press Enter), then pedal. The trainer holds
+   workout targets (ERG) and otherwise gives a road feel that follows your speed, draggier on gravel roads
+   (read from the road you chose in the game). Press Ctrl+C to
    stop, or just get off: the ride ends after 3 minutes
    without pedalling. The bridge starts the game through Steam once the trainer connects, beeps when
    something needs attention, and takes F6/F7 (gear), F8 (pause), F9 (re-sync) and F10 (overlay) while the game is in front. A subtle

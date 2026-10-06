@@ -200,7 +200,10 @@ def format_summary(r: RideSummary, title: str = "Ride summary") -> str:
     return "\n".join(lines)
 
 
-def advice(r: RideSummary, previous: list | None = None, ftp: float = 0.0) -> list[str]:
+STRUCTURED = ("ramp", "cadence", "tempo", "sweetspot")  # power follows the plan: no pacing/fade tips
+
+
+def advice(r: RideSummary, previous: list | None = None, ftp: float = 0.0, workout: str | None = None) -> list[str]:
     """A few plain suggestions for the next ride, from this ride's trainer data (and earlier rides)."""
     tips = []
     if r.moving_s < 5 * 60:
@@ -216,14 +219,15 @@ def advice(r: RideSummary, previous: list | None = None, ftp: float = 0.0) -> li
     if r.avg_cadence_rpm and r.avg_cadence_rpm < 75:
         tips.append(f"Cadence averaged {r.avg_cadence_rpm:.0f} rpm. Try spinning 80-90 rpm at the same watts: "
                     "a lighter push per stroke that you can keep up for longer.")
-    if r.normalized_power_w and r.avg_power_w and r.normalized_power_w / r.avg_power_w > 1.10:
+    structured = workout in STRUCTURED
+    if not structured and r.normalized_power_w and r.avg_power_w and r.normalized_power_w / r.avg_power_w > 1.10:
         tips.append(f"Surgy pacing: normalized {r.normalized_power_w:.0f} W vs {r.avg_power_w:.0f} W average "
                     f"(variability {r.normalized_power_w / r.avg_power_w:.2f}; steady riding is under 1.05). "
                     "Smoother, steadier pressure costs less for the same distance.")
     if r.low_power_share > 0.15:
         tips.append(f"You were under 25 W for {r.low_power_share * 100:.0f}% of the ride. Short coasts are fine; "
                     "for fitness, keep a light pressure on the pedals between efforts.")
-    if r.first_half_w and r.second_half_w:
+    if not structured and r.first_half_w and r.second_half_w:
         change = r.second_half_w / r.first_half_w - 1
         if change < -0.10:
             tips.append(f"Power faded {-change * 100:.0f}% in the second half ({r.first_half_w:.0f} -> "

@@ -117,9 +117,11 @@ async def run_reader(
     reconnect_delay: float = 3.0,
     address: str | None = None,
     on_connected: Callable[[str, str], None] | None = None,
+    control=None,
 ) -> None:
     """Connect, subscribe to Indoor Bike Data, and reconnect forever on drops. With address set, only
-    that trainer is accepted; after a first pairing, on_connected(address, name) lets the caller pin it."""
+    that trainer is accepted; after a first pairing, on_connected(address, name) lets the caller pin it.
+    control (bridge.trainer.TrainerControl) is attached to each connection to set resistance."""
     from bleak import BleakClient
 
     failures = 0
@@ -154,7 +156,13 @@ async def run_reader(
                     address = device.address.upper()  # pin for reconnects in this run too
                     if on_connected:
                         on_connected(address, device.name or "")
-                await disconnected.wait()
+                if control is not None:
+                    await control.attach(client)  # never raises: resistance is optional
+                try:
+                    await disconnected.wait()
+                finally:
+                    if control is not None:
+                        control.detach()
                 log.warning("trainer disconnected")
         except asyncio.CancelledError:
             task = asyncio.current_task()

@@ -62,7 +62,35 @@ green when you're on it, orange when off; a double beep marks each new block):
 | `long` | your long ride: last longest + 5 min, in ~15 min blocks with 1 min stand, stretch & drink breaks | long rides (saddle and mind) |
 | `ramp` | ramp test: 1 min steps +20 W until you can't hold one | **measures your FTP** (75% of your best minute) and saves it |
 
-The trainer is never controlled (data flows one way): you hold the target with your legs and gears.
+In a workout the trainer holds the target for you (**ERG**: the overlay says `ERG W`); see below.
+
+## Trainer resistance and road feel
+
+The bridge sets the KICKR's resistance over Bluetooth (FTMS), so there is always something to push against:
+
+- **Workouts with a power target, including the ramp test:** ERG. The trainer holds the target (the middle
+  of the range) whatever your gear or cadence; you just keep pedalling. It lets go into road feel when you
+  stop pedalling or drop under 45 rpm for 3 s (no "ERG spiral"), in rest blocks, and while paused (F8).
+- **Everything else (free rides, rest blocks):** road feel. A flat road with real rolling resistance and
+  air drag, so it gets harder the faster you spin, like a real bike.
+- **Gravel:** the bridge reads the road you picked in Slow Roads (the bottom row of "new road": the two
+  dirt options are gravel, the three paved ones tarmac) and switches to a draggier gravel feel with a
+  slightly uneven texture ("rumble"). A road change mid-ride is noticed within about a minute (the game
+  saves its settings about once a minute); the overlay says `ROAD: GRAVEL`.
+- At the end of the ride the trainer is handed back (reset).
+
+| Want | Option | settings.json |
+| --- | --- | --- |
+| No resistance control at all (as before) | `--no-resistance` | `"resistance": 0` |
+| Workouts without ERG | `--no-erg` | `"erg": 0` |
+| No road feel outside ERG | `--no-road-feel` | `"road_feel": 0` |
+| Force gravel / tarmac feel | `--gravel` / `--tarmac`, or **G** in the start menu (auto -> gravel -> tarmac) | `"gravel": 1` / `0` |
+| Smoother or rougher gravel | `--rumble 0` (smooth) to `1` | `"rumble": 0.3` |
+
+Check what the game has saved: `.venv\Scripts\python -m bridge.gamestate`.
+
+**If you did a ramp test before ERG existed, redo it:** without resistance it tends to stop early and give
+too low an FTP (compare it with your best 20 minutes x 0.95 on the scoreboard).
 
 **During any ride** the overlay also shows short coach messages with a beep: **stand up & stretch** every
 20 min (`--comfort-break`, 0 = off), a check-in every 15 min with a **drink water** reminder and its own
@@ -176,7 +204,7 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | Coast easing down faster or slower after the hold | (code: `release_step_s`, 4 s per 5 mph) | 4 |
 | More or less room to speed up downhill while coasting | `--coast-margin` (mph above your last speed) | 5 |
 | Test without the bike (scripted ride) | `--sim "0:0,5:15,40:15,55:0"` (seconds:bike km/h) | off |
-| Test without the game | `--dry-run` (reads the bike, sends nothing) | off |
+| Test without the game | `--dry-run` (reads the bike, sends nothing, never sets resistance) | off |
 | Use a different trainer | `--trainer pair` (forget the saved one and pair with the first FTMS trainer found) or `--trainer AA:BB:CC:DD:EE:FF` | saved in `settings.json` |
 | Previous model-based control (no in-game limit) | `--mode speed` (uses `--ramp`, `--max-throttle`, `--max-brake`) | limit |
 | Old watts-to-throttle behaviour | `--mode power` | limit |

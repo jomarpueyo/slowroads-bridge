@@ -1,5 +1,5 @@
 """Guided workouts for the overlay: blocks with a power target (a share of FTP), optional cadence target,
-countdown, and a beep at each change. The trainer is never controlled (data flows one way): you hold the
+countdown, and a beep at each change. During blocks with a target the trainer holds it in ERG (bridge/trainer.py); you hold the
 target, the overlay shows whether you're on it.
 
   ride.bat --workout endurance      (or pick one from the menu ride.bat shows at the start)
