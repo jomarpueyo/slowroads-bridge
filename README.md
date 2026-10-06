@@ -5,7 +5,9 @@ trainer. Your pedalling drives the car: push harder and it goes faster, stop and
 steers itself.
 
 It reads your power over Bluetooth, simulates a bike, and drives the game through a virtual Xbox
-controller. It uses no game mods, no memory reading and no game telemetry.
+controller. It also sets the trainer's resistance: ERG for workout targets, otherwise a road feel that is
+draggier on gravel. It uses no game mods and no memory reading; the only thing it reads from the game is
+which road you picked, from the game's own saved settings file.
 
 > Windows only. Personal hobby project, not affiliated with Wahoo, Zwift or Slow Roads' developer.
 
@@ -15,7 +17,9 @@ underneath with a beep, so long rides are easier and you remember the basics:
 
 ![Overlay reminders: "15 MIN DONE · DRINK WATER" at 15 min, "STAND UP & STRETCH · 30 S" at 20 min, and both merged at 60 min](docs/images/overlay-reminders.png)
 
-Everything on it comes from the trainer, never from the game. F10 hides it.
+After 20 s the numbers fade to about a third so they don't pull your eyes, and only the one that matters
+lights up for a moment (each minute, each mile, a power surge, 100+ rpm). Everything on it comes from the
+trainer, never from the game. F10 hides it.
 
 ## How it works
 
@@ -40,6 +44,10 @@ flowchart LR
   holds for 8 s while your watts build.
 - **Push bonus.** Above 150 W the gear ratio ramps up (+50% at 400 W), the limit steps up sooner and the
   throttle opens to 1.0, so hard efforts pay off.
+- **Resistance.** In workout blocks with a power target the trainer runs in ERG and holds the watts
+  whatever your gear. Otherwise it simulates a flat road whose drag grows with your speed, with higher
+  rolling resistance on the game's dirt roads. ERG lets go when you stop pedalling or in rest blocks, and
+  the trainer is reset at the end of every ride (`--no-resistance` turns it all off).
 - **Never reverses.** Braking at a stop in Slow Roads turns into reverse, so the bridge never holds a brake
   there.
 
@@ -90,16 +98,17 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
    padlock by the speedometer), and keep the game window focused.
 4. Pick a free ride or a workout from the start menu (or press Enter), then pedal. The trainer holds
    workout targets (ERG) and otherwise gives a road feel that follows your speed, draggier on gravel roads
-   (read from the road you chose in the game). Press Ctrl+C to
-   stop, or just get off: the ride ends after 3 minutes
-   without pedalling. The bridge starts the game through Steam once the trainer connects, beeps when
-   something needs attention, and takes F6/F7 (gear), F8 (pause), F9 (re-sync) and F10 (overlay) while the game is in front. A subtle
-   overlay at the top right shows ride time, virtual miles, watts, cadence, 1/5/10 min power and %FTP.
-5. The summary ends with a scoreboard (lifetime miles, streak, records, form, what to work on, next
-   ride). **`rides.bat`** opens your ride book: every ride, records and charts, on this PC only.
-6. Quiet extras keep it going: a welcome back after a break, a ride plan, a 1-5 "how did it feel", your
-   lifetime miles as a trip along the Pacific Coast Highway, your last ride as a ghost, a monthly challenge. You get a ride summary from the trainer's data
-   (time, distance, average/normalized power, best efforts, kJ, cadence), saved in `logs/summary-*.txt`.
+   (read from the road you chose in the game). Press Ctrl+C to stop, or just get off: the ride ends after
+   3 minutes without pedalling. The bridge starts the game through Steam once the trainer connects, beeps
+   when something needs attention, and takes F6/F7 (gear), F8 (pause), F9 (re-sync) and F10 (overlay)
+   while the game is in front.
+5. After the ride you rate how it felt (1-5) and get a summary from the trainer's data (time, distance,
+   average/normalized power, best efforts, kJ, cadence, load, zones), saved in `logs/summary-*.txt`. It
+   ends with a scoreboard: lifetime miles, streak, records, form, what to work on and the next ride.
+   **`rides.bat`** opens your ride book: every ride, records and charts, on this PC only.
+6. Quiet extras keep it going: a welcome back after a break, a ride plan (`python -m bridge.plan`), a
+   nudge to finish easy, your lifetime miles as a trip along the Pacific Coast Highway, your last similar
+   ride as a ghost, a monthly challenge, and a share card picture of a ride (`python -m bridge.sharecard`).
 
 Something broke? Double-click **`report.bat`** and attach the zip to a
 [new issue](https://github.com/jomarpueyo/slowroads-bridge/issues/new?template=bug_report.md). It holds
@@ -112,12 +121,12 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 
 | Path | What |
 | --- | --- |
-| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `pad.py` (virtual controller), `ridelog.py` (logs), `summary.py` (ride summary and totals), `cues.py` / `hotkeys.py` (beeps, F6-F9), `cleanup.py` (old logs), `overlay.py` (trainer-data overlay), `ridebook.py` / `coach.py` / `workouts.py` / `companion.py` / `dashboard.py` (ride book, scoreboard, workouts, in-ride coach, charts), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
+| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `trainer.py` (resistance: ERG and road feel), `gamestate.py` (road type from the game's saved settings), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `mapper.py` (throttle mapping), `pad.py` (virtual controller), `gamewin.py` (finds the game window, safe scroll points), `ridelog.py` (logs), `summary.py` (ride summary and totals), `cues.py` / `hotkeys.py` (beeps, F6-F10), `cleanup.py` (old logs), `overlay.py` (trainer-data overlay), `ridebook.py` / `coach.py` / `workouts.py` / `companion.py` / `dashboard.py` (ride book, scoreboard, workouts, in-ride coach, charts), `motivation.py` / `plan.py` / `sharecard.py` (welcome back, ride plan, journey, ghost, monthly challenge, share card), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
 | `tools/` | Checks and testing tools: ride summaries and replays, trainer probes, calibration, and **testing-only** screen-OCR experiments that drive the game (`experiments.py`, `speedo.py`, `debugpanel.py`, `ride_recorder.py`) |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest -q`) |
 | `docs/SECURITY.md` | Security review: threat model, findings and what was tested |
 | `docs/STEPPING.md`, `docs/stepping.html` | How the limit steps in six situations; regenerate with `tools/stepping_diagrams.py` |
-| `ride.bat`, `rides.bat`, `report.bat`, `calibrate.bat`, `scripts/setup.ps1` | Launchers and one-time setup |
+| `ride.bat`, `rides.bat`, `report.bat`, `calibrate.bat`, `scripts/setup.ps1`, `scripts/shortcuts.ps1` | Launchers, one-time setup and desktop shortcuts |
 | `settings.example.json` | Example calibration for the older `--mode speed`; the default limit mode needs none |
 
 Each ride writes to `logs/` (git-ignored): trainer packets, 20 Hz controller decisions and, from the
