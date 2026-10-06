@@ -11,4 +11,5 @@ echo.
 ".venv\Scripts\python.exe" -m bridge.dashboard
 echo.
 echo More: .venv\Scripts\python -m bridge.ridebook list ^| show N ^| hide N ^| note N text
+echo       .venv\Scripts\python -m bridge.plan    (ride plan, monthly challenge)   .venv\Scripts\python -m bridge.sharecard    (picture of your last ride)
 pause

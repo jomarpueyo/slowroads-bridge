@@ -96,7 +96,9 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
    something needs attention, and takes F6/F7 (gear), F8 (pause), F9 (re-sync) and F10 (overlay) while the game is in front. A subtle
    overlay at the top right shows ride time, virtual miles, watts, cadence, 1/5/10 min power and %FTP.
 5. The summary ends with a scoreboard (lifetime miles, streak, records, form, what to work on, next
-   ride). **`rides.bat`** opens your ride book: every ride, records and charts, on this PC only. You get a ride summary from the trainer's data
+   ride). **`rides.bat`** opens your ride book: every ride, records and charts, on this PC only.
+6. Quiet extras keep it going: a welcome back after a break, a ride plan, a 1-5 "how did it feel", your
+   lifetime miles as a trip along the Pacific Coast Highway, your last ride as a ghost, a monthly challenge. You get a ride summary from the trainer's data
    (time, distance, average/normalized power, best efforts, kJ, cadence), saved in `logs/summary-*.txt`.
 
 Something broke? Double-click **`report.bat`** and attach the zip to a

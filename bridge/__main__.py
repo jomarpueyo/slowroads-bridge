@@ -28,6 +28,7 @@ from .summary import advice, compare_line, format_advice, format_summary, save_s
 from .workouts import KEYS as WORKOUT_KEYS, WorkoutRunner, build as build_workout
 from .trainer import GRAVEL_CRR, Texture, TrainerControl, decide as decide_resistance
 from .gamestate import RoadWatcher
+from . import motivation as mo
 from .ridelog import (ACTIVE_RIDE, LOG_DIR, DriveLog, RideLog, close_event_log, format_status,
                       setup_event_log, timestamp)
 
@@ -120,6 +121,10 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="no 'drink water' reminder with the 15 min check-ins")
     c.add_argument("--weekly-rides", type=int, default=3, help="weekly goal: rides (or --weekly-minutes)")
     c.add_argument("--weekly-minutes", type=int, default=90, help="weekly goal: riding minutes")
+    c.add_argument("--no-ghost", dest="ghost", action="store_false", default=True,
+                   help="don't compare with your last similar ride during the ride")
+    c.add_argument("--no-feel", dest="feel", action="store_false", default=True,
+                   help="don't ask 'how did it feel?' after the ride")
     t = ap.add_argument_group("trainer resistance (settings.json keys: resistance, erg, road_feel, gravel, rumble)")
     t.add_argument("--no-resistance", dest="resistance", action="store_false", default=True,
                    help="never control the trainer's resistance (it stays as it is, like before 2026-10-05)")
@@ -186,6 +191,30 @@ def choose_workout(coach: Coach, timeout_s: float = 20.0, gravel=None, detected=
         time.sleep(0.05)
     print("free ride")
     return None, gravel
+
+
+def ask_feel(log_dir: Path, stamp: str, timeout_s: float = 30.0) -> int | None:
+    """After the ride: 'How did it feel?' 1-5, one key (Enter or 30 s skips). Saved in logs/ridebook.json."""
+    if not sys.stdin or not sys.stdin.isatty():
+        return None
+    try:
+        import msvcrt
+    except ImportError:
+        return None
+    print("\nHow did it feel?  1 easy  2 comfortable  3 moderate  4 hard  5 very hard  (Enter skips): ",
+          end="", flush=True)
+    end = time.monotonic() + timeout_s
+    while time.monotonic() < end:
+        if msvcrt.kbhit():
+            ch = msvcrt.getwch()
+            if ch in "12345":
+                mo.set_feel(log_dir, stamp, int(ch))
+                print(f"{ch} ({mo.FEEL_WORDS[int(ch)]}), saved")
+                return int(ch)
+            break
+        time.sleep(0.05)
+    print("skipped")
+    return None
 
 
 def drive_config(args: argparse.Namespace) -> DriveConfig:
@@ -257,8 +286,16 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
     if workout_key:
         runner = WorkoutRunner(build_workout(workout_key, ftp or 150, coach.long_ride_target_min()), ftp)
     records = coach.records()
+    ghost = None
+    if args.ghost and source_fn is None:
+        try:
+            ghost = mo.pick_ghost(coach.rides, workout_key, Path(args.log_dir), args.rider_kg)
+        except Exception:
+            log.exception("could not load the ghost ride")
+    finish_at = None if workout_key else 60 * mo.ride_minutes(coach.plan(), coach.weekly_minutes, coach.weekly_rides)
     companion = Companion({d: w for d, (w, _) in records["curve"].items()}, coach.lifetime()["miles"],
-                          0 if workout_key == "long" else args.comfort_break, drink=bool(args.drink))
+                          0 if workout_key == "long" else args.comfort_break, drink=bool(args.drink),
+                          ghost=ghost, finish_at_s=finish_at)
     control = TrainerControl(enabled=bool(args.resistance) and not args.dry_run,
                              on_event=lambda mode, label: on_trainer_event(mode, label))
     texture = Texture(GRAVEL_CRR, args.rumble) if args.rumble > 0 else None
@@ -327,6 +364,7 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
              if overlay.enabled else "")
           + (f"auto-end:  after {args.idle_end:g} min without pedalling\n" if args.idle_end > 0 else "")
           + (coach.brief_text() + "\n" if coach.rides else "")
+          + (f"ghost:     your ride of {ghost.label}, every 10 min\n" if ghost else "")
           + (f"workout:   {runner.w.title}: {runner.w.blurb}\n" if runner else "")
           + ((f"trainer:   " + ", ".join(
               ([("ERG holds workout targets" if runner else "ERG in workouts")] if args.erg else [])
@@ -537,8 +575,11 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             state["greeted"] = True
             w = coach.week(0)
             n, goal = w["rides"] + 1, coach.weekly_rides
-            progress = f"RIDE {n} OF {goal} THIS WEEK" if n <= goal else f"RIDE {n} THIS WEEK · GOAL MET"
-            say("", f"{progress} · STREAK {coach.streak_weeks()} WK", 10)
+            if coach.comeback():  # coming back after a break is what builds the habit: say so warmly
+                say("", "WELCOME BACK · ANY RIDE KEEPS THE STREAK GOING", 10)
+            else:
+                progress = f"RIDE {n} OF {goal} THIS WEEK" if n <= goal else f"RIDE {n} THIS WEEK · GOAL MET"
+                say("", f"{progress} · STREAK {coach.streak_weeks()} WK", 10)
         events = []
         if runner is not None:
             status, ev = runner.update(t_ride, stats.avg(3.5, now)[0], stats.cadence)
@@ -641,6 +682,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             text = format_summary(current)
             if this is not None:
                 text += "\n" + board.ride_report(this)
+                if mo.finished_easy(current.series or []):
+                    text += "\nFinish      eased off at the end: a good way to finish (it makes the next ride easier to start)"
             text += format_advice(advice(current, None, ftp_set, workout_key))
             if this is not None:
                 text += "\n\n" + board.scoreboard_text()
@@ -650,6 +693,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 prev = coach.rides[-1]
                 print(compare_line(current, SimpleNamespace(moving_s=prev.moving_s, avg_power_w=prev.avg_w,
                                                             work_kj=prev.work_kj)), flush=True)
+            if args.feel and source_fn is None and current.moving_s >= 300:
+                ask_feel(Path(args.log_dir), stamp)
         except Exception:
             log.exception("could not summarize the ride")
         try:

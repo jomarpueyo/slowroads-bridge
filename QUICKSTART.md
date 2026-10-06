@@ -64,6 +64,32 @@ green when you're on it, orange when off; a double beep marks each new block):
 
 In a workout the trainer holds the target for you (**ERG**: the overlay says `ERG W`); see below.
 
+## Staying motivated (quiet extras)
+
+Small things from the research on what keeps people riding, none of them on screen all the time:
+
+- **Welcome back:** after 4+ days off the start screen and the overlay greet you ("any ride this week keeps
+  your streak going") and the coach suggests an easy ride. The summary notes the comeback.
+- **Ride plan:** `.venv\Scripts\python -m bridge.plan set tue thu sat 18:30 30` (days, time, minutes). The
+  start screen shows the next planned ride. `python -m bridge.plan clear` removes it.
+- **Finish easy:** in a free ride, 3 minutes before your planned ride length (or 30 min) the overlay says
+  `LAST 3 MIN · EASE OFF FOR A GOOD FINISH`. Rides that end easy are remembered as better rides.
+- **How did it feel?** After rides of 5+ minutes the bridge asks for one key, 1 (easy) to 5 (very hard);
+  Enter skips. When your last rides felt hard, the coach suggests an easy one. `--no-feel` stops asking.
+- **Journey:** your lifetime miles travel the Pacific Coast Highway (656 mi, then Route 66). The overlay says
+  `<TOWN> IN 0.5 MI` and `ARRIVED: <TOWN>`; the scoreboard and dashboard show the progress.
+- **Your ghost:** every 10 minutes, how far ahead or behind your last similar ride (same workout, or your
+  last free ride) you are: `VS SUN 04 OCT · +0.10 MI`. `--no-ghost` turns it off.
+- **Monthly challenge:** by default your weekly goal over the month (e.g. 13 rides); pick your own with
+  `python -m bridge.plan challenge rides 12` (or `miles 100`, or `long 60` = one 60-minute ride).
+- **Share a ride:** `.venv\Scripts\python -m bridge.sharecard` saves a picture of your latest ride
+  (`logs\share-*.png`; add a number from `ridebook list` for another ride) to send a friend. No name or
+  location on it.
+- **A tip with no code:** keep one podcast, audiobook or album only for the bike. In a study, people who
+  could only hear their audiobook at the gym went 51% more often at first.
+
+All of this is stored in `logs\ridebook.json` and stays on this PC.
+
 ## Trainer resistance and road feel
 
 The bridge sets the KICKR's resistance over Bluetooth (FTMS), so there is always something to push against:

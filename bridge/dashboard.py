@@ -12,6 +12,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import motivation as mo
 from .coach import Coach, _hms
 from .ridebook import DURATIONS, duration_label
 
@@ -33,6 +34,9 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:right;
 border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:600;font-size:12px}th:first-child,td:first-child{text-align:left}
 td.l{text-align:left;color:var(--muted)}ul{margin:0;padding-left:18px}li{margin:4px 0}.tag{display:inline-block;
 background:var(--accent);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px}.scroll{overflow-x:auto}
+.bar{position:relative;height:12px;border-radius:6px;background:var(--line);margin:8px 0 6px}
+.fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--accent)}
+.town{position:absolute;top:-3px;width:2px;height:18px;background:var(--muted);opacity:.5}
 .legend{font-size:12px;color:var(--muted)}.legend i{display:inline-block;width:10px;height:3px;margin:0 5px 3px 10px}
 """
 
@@ -147,10 +151,25 @@ def render_dashboard(coach: Coach) -> str:
     from .workouts import title_of
 
     key, why = coach.suggest()
+    felt = mo.feels(coach.book)
+    j = mo.journey(life["miles"])
+    ch, progress = coach.challenge()
+    plan = mo.plan_line(coach.plan(), coach.today)
+    places = next(r[2] for r in mo.ROUTES if r[0] == j["route"])
+    pct = j["on_route"] / j["length"] * 100
+    ticks = "".join(f'<div class="town" style="left:{m / j["length"] * 100:.2f}%" title="{_esc(n)}"></div>'
+                    for m, n in places)
+    journey = (f'<div class="bar"><div class="fill" style="width:{pct:.2f}%"></div>{ticks}</div>'
+               f'<p class="sub">{_esc(mo.journey_line(life["miles"]))}</p>')
+    ch_pct = min(100.0, progress / ch["target"] * 100) if ch["target"] else 0
+    month = (f'<div class="bar"><div class="fill" style="width:{ch_pct:.1f}%"></div></div>'
+             f'<p class="sub">{_esc(coach.challenge_text())}'
+             + ("" if ch["set"] else " (set your own: python -m bridge.plan challenge rides 12)") + "</p>")
     rows = "".join(
         f"<tr><td>{r.when:%a %d %b %H:%M}</td><td>{_hms(r.moving_s)}</td><td>{r.miles:.1f}</td><td>{r.avg_w:.0f}</td>"
         f"<td>{(f'{r.np_w:.0f}' if r.np_w else '--')}</td><td>{r.work_kj:.0f}</td><td>{r.avg_cad:.0f}</td>"
-        f"<td>{_hms(r.longest_steady_s)}</td><td class='l'>{_esc(r.workout or '')} {_esc(r.note)}</td></tr>"
+        f"<td>{_hms(r.longest_steady_s)}</td><td>{_esc(mo.FEEL_WORDS.get(felt.get(r.stamp), ''))}</td>"
+        f"<td class='l'>{_esc(r.workout or '')} {_esc(r.note)}</td></tr>"
         for r in reversed(coach.rides))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Ride Book</title><style>{CSS}</style></head>
@@ -158,7 +177,9 @@ def render_dashboard(coach: Coach) -> str:
 {f"&middot; since {life['since']:%d %b %Y}" if life['since'] else ""}</p>
 <div class="tiles">{tile_html}</div>
 <div class="card" style="margin-bottom:16px"><h2>Next ride</h2><span class="tag">{_esc(title_of(key, coach))}</span>
-&nbsp;{_esc(why)}</div>
+&nbsp;{_esc(why)}{f'<p class="sub">{_esc(plan)}</p>' if plan else ""}</div>
+<div class="grid"><div class="card"><h2>Journey</h2>{journey}</div>
+<div class="card"><h2>{coach.today:%B} challenge</h2>{month}</div></div>
 <div class="grid"><div class="card"><h2>Minutes per week</h2>{_weekly_svg(coach)}</div>
 <div class="card"><h2>Power curve</h2>{_curve_svg(coach)}</div></div>
 <div class="grid"><div class="card"><h2>Work on</h2><ul>{focus}</ul></div>
@@ -166,7 +187,7 @@ def render_dashboard(coach: Coach) -> str:
 <div class="grid"><div class="card"><h2>Fitness and form</h2>{_load_svg(coach)}</div>
 <div class="card"><h2>Records</h2><table>{rec_rows}</table></div></div>
 <div class="card scroll"><h2>All rides</h2><table><tr><th>date</th><th>moving</th><th>miles</th><th>avg W</th><th>NP</th>
-<th>kJ</th><th>rpm</th><th>steady</th><th>workout / note</th></tr>{rows}</table></div>
+<th>kJ</th><th>rpm</th><th>steady</th><th>felt</th><th>workout / note</th></tr>{rows}</table></div>
 </main></body></html>"""
 
 

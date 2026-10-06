@@ -144,8 +144,10 @@ def test_focus_areas_and_strengths_from_ride_data():
 
 def test_suggestions_follow_the_week_and_fatigue():
     few = [ride(datetime(2026, 10, d, 8)) for d in (1, 2, 3)]
-    assert Coach(few, today=TODAY).suggest()[0] == "ramp"              # no FTP yet
-    c = Coach(few, ftp_set=180, today=date(2026, 10, 9))              # Friday, no long ride yet
+    assert Coach(few, today=date(2026, 10, 5)).suggest()[0] == "ramp"   # no FTP yet
+    assert Coach(few, today=TODAY).suggest()[0] == "easy"               # 4 days off: welcome back, easy
+    recent = [ride(datetime(2026, 10, d, 8)) for d in (6, 7, 8)]
+    c = Coach(recent, ftp_set=180, today=date(2026, 10, 9))           # Friday, no long ride yet
     assert c.suggest()[0] == "long"
     tired = [ride(datetime(2026, 10, d, 8), 90, 220, np_=230) for d in range(1, 8)]
     assert Coach(tired, ftp_set=180, today=TODAY).suggest()[0] == "easy"
@@ -276,6 +278,6 @@ def test_coached_ride_through_the_bridge(tmp_path, monkeypatch):
     log_text = next(tmp_path.glob("bridge-2*.log")).read_text(encoding="utf-8")
     newest = sorted(tmp_path.glob("bridge-*.log"))[-1].read_text(encoding="utf-8")
     assert "workout=endurance" in newest
-    assert "coach: RIDE 1 OF 4 THIS WEEK" in newest or "coach: RIDE" in newest
+    assert "coach: RIDE" in newest or "coach: WELCOME BACK" in newest   # depends on today's date
     assert "coach: WARM UP" in newest
     assert log_text

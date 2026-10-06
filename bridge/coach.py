@@ -10,6 +10,7 @@ what you have ridden, not your ceiling, so harder efforts and a ramp test sharpe
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from . import motivation as mo
 from .ridebook import KM_PER_MILE, Ride, duration_label, load_rides
 
 # Best power as a multiple of FTP for a typical all-round recreational rider (shape, not level).
@@ -38,12 +39,13 @@ def next_milestone(miles: float) -> int:
 
 class Coach:
     def __init__(self, rides: list[Ride], ftp_set: float = 0.0, weekly_rides: int = 3,
-                 weekly_minutes: int = 90, today: date | None = None) -> None:
+                 weekly_minutes: int = 90, today: date | None = None, book: dict | None = None) -> None:
         self.rides = sorted(rides, key=lambda r: r.start)
         self.ftp_set = ftp_set or 0.0
         self.weekly_rides = max(1, int(weekly_rides))
         self.weekly_minutes = max(10, int(weekly_minutes))
         self.today = today or date.today()
+        self.book = book or {}          # logs/ridebook.json: plan, feelings, challenges (bridge/motivation.py)
 
     @classmethod
     def from_settings(cls, log_dir: Path, exclude: Path | None = None, rider_kg: float | None = None,
@@ -54,7 +56,29 @@ class Coach:
         kg = rider_kg if rider_kg is not None else s.get("rider_kg", 85.0)
         rides = load_rides(Path(log_dir), kg, exclude=exclude)
         return cls(rides, ftp if ftp is not None else s.get("ftp", 0.0), int(s.get("weekly_rides", 3)),
-                   int(s.get("weekly_minutes", 90)))
+                   int(s.get("weekly_minutes", 90)), book=mo.load_book(Path(log_dir)))
+
+    # ------------------------------------------------------------------ motivation (research section 18)
+
+    def plan(self):
+        return mo.get_plan(self.book)
+
+    def comeback(self) -> int | None:
+        """Days off before today if this is a comeback ride (4+ days), else None."""
+        return mo.comeback_days(self.rides[-1].when.date() if self.rides else None, self.today)
+
+    def feel_trend(self) -> float | None:
+        return mo.feel_trend(mo.feels(self.book), [r.stamp for r in self.rides])
+
+    def challenge(self) -> tuple[dict, float]:
+        month = self.today.strftime("%Y-%m")
+        ch = mo.challenge(self.book, month, self.weekly_rides, self.today.year, self.today.month)
+        rides = [r for r in self.rides if r.when.strftime("%Y-%m") == month]
+        return ch, mo.challenge_progress(ch, rides)
+
+    def challenge_text(self) -> str:
+        ch, progress = self.challenge()
+        return mo.challenge_line(ch, progress, self.today.strftime("%B"))
 
     # ------------------------------------------------------------------ FTP and load
 
@@ -268,6 +292,11 @@ class Coach:
         load = self.load()
         if load and load[2] < -25:
             return "easy", "fatigue is high (form %.0f): an easy spin keeps the habit without digging deeper" % load[2]
+        trend = self.feel_trend()
+        if trend is not None and trend >= 4:
+            return "easy", "your last rides felt hard: an easy one keeps it enjoyable (and enjoyable rides get repeated)"
+        if self.comeback():
+            return "easy", "welcome back: an easy ride restarts the habit; no need to make up for the break"
         ftp_source = self.ftp()[1]
         ramp_recent = any(r.workout == "ramp" and r.when.date() >= self.today - timedelta(days=42) for r in self.rides)
         if ftp_source != "set" and not ramp_recent and len(self.rides) >= 3:
@@ -298,9 +327,17 @@ class Coach:
         last = ("first ride!" if since is None else "last ride today" if since == 0 else
                 "last ride yesterday" if since == 1 else f"last ride {since} days ago")
         key, why = self.suggest()
-        return (f"week:      {w['rides']}/{self.weekly_rides} rides, {w['minutes']:.0f}/{self.weekly_minutes} min   "
-                f"streak {self.streak_weeks()} wk   {last}\n"
-                f"suggested: {title_of(key, self)} ({why})")
+        lines = [f"week:      {w['rides']}/{self.weekly_rides} rides, {w['minutes']:.0f}/{self.weekly_minutes} min   "
+                 f"streak {self.streak_weeks()} wk   {last}"]
+        back = self.comeback()
+        if back:
+            lines.append(f"welcome back after {back} days: any ride this week keeps your streak going")
+        plan = mo.plan_line(self.plan(), self.today)
+        if plan:
+            lines.append(plan)
+        lines.append(f"month:     {self.challenge_text()}")
+        lines.append(f"suggested: {title_of(key, self)} ({why})")
+        return "\n".join(lines)
 
     def ride_report(self, ride: Ride) -> str:
         """Extra summary lines for one ride: load, zones, efforts, records."""
@@ -315,6 +352,10 @@ class Coach:
             total = sum(z.values()) or 1
             lines.append("Zones       " + "  ".join(f"{k} {v * 100 / total:.0f}%" for k, v in z.items() if v))
         lines.append(f"Efforts     longest steady stretch {_hms(ride.longest_steady_s)}   coasts of 10 s+: {ride.coasts}")
+        before = [r for r in self.rides if r.start < ride.start]
+        back = mo.comeback_days(before[-1].when.date() if before else None, ride.when.date())
+        if back:
+            lines.append(f"Comeback    first ride after {back} days off: that's how habits are built")
         recs = self.new_records(ride)
         if recs:
             lines.append("Records     NEW " + "; ".join(recs))
@@ -346,6 +387,14 @@ class Coach:
         if load:
             lines.append(f"Form        fitness {load[0]:.0f}   fatigue {load[1]:.0f}   form {load[2]:+.0f}   "
                          f"(FTP {ftp:.0f} W {'set' if source == 'set' else 'estimated'})")
+        lines.append("Journey     " + mo.journey_line(life["miles"]))
+        lines.append("Month       " + self.challenge_text())
+        trend = self.feel_trend()
+        if trend is not None:
+            lines.append(f"Feel        last rides {mo.FEEL_WORDS[round(trend)]} on average ({trend:.1f}/5)")
+        plan = mo.plan_line(self.plan(), self.today)
+        if plan:
+            lines.append("Plan        " + plan.removeprefix("plan: "))
         good = self.strengths()
         if good:
             lines.append("Strengths   " + ", ".join(good))

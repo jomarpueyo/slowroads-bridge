@@ -33,7 +33,9 @@ KEYS = ("gear", "accel", "coast", "drag_quad", "brake_rate", "top_speed", "deadz
         "overlay_fade", "overlay_dim",
         # trainer resistance (0/1 each): resistance = any control at all, erg = workout targets, road_feel =
         # flat-road simulation otherwise, gravel = gravel rolling resistance; rumble = gravel texture 0..1
-        "resistance", "erg", "road_feel", "gravel", "rumble")
+        "resistance", "erg", "road_feel", "gravel", "rumble",
+        # motivation (0/1): ghost = compare with your last similar ride; feel = ask "how did it feel?" after
+        "ghost", "feel")
 # Bluetooth address as Windows/bleak report it: six hex pairs.
 ADDRESS_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 
