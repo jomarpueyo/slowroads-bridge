@@ -31,7 +31,7 @@ def setup_event_log(log_dir: Path, stamp: str, verbose: bool = False, prefix: st
     console.setLevel(logging.DEBUG if verbose else logging.WARNING)
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
-    root.handlers[:] = [file_handler, console]
+    root.handlers[:] = [file_handler] + ([console] if sys.stderr else [])  # no console under pythonw
     # bleak logs every advertisement it hears at DEBUG, which buried the bridge's own events.
     logging.getLogger("bleak").setLevel(logging.INFO)
     logging.getLogger("asyncio").setLevel(logging.INFO)

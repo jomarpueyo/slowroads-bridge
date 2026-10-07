@@ -17,28 +17,39 @@ from .coach import Coach, _hms
 from .ridebook import DURATIONS, duration_label
 
 CSS = """
-:root{--bg:#f6f5f2;--card:#fff;--ink:#1d2329;--muted:#6b7480;--line:#e3e1dc;--accent:#2f7de1;--accent2:#e8a23a;
---good:#3aa66a;--bad:#d9534f}
-@media (prefers-color-scheme:dark){:root{--bg:#14181c;--card:#1d2328;--ink:#e8ecef;--muted:#8d98a3;--line:#2c343b;
---accent:#5aa2ff;--accent2:#f0b45a;--good:#5cc98a;--bad:#ef7d78}}
+:root{--bg:#2f3538;--card:#3b4347;--ink:#f2efe8;--muted:#9aa3a6;--line:#4a5357;--accent:#f2efe8;--accent2:#ffd678;
+--good:#8fd19e;--bad:#e8786a}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
-font:15px/1.5 "Segoe UI",system-ui,sans-serif}main{max-width:1060px;margin:0 auto;padding:28px 16px 60px}
-h1{font-weight:300;font-size:30px;letter-spacing:.5px;margin:0}h2{font-size:12px;letter-spacing:2px;
-text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 12px}.sub{color:var(--muted);margin:4px 0 22px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
-.tile,.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-.tile b{display:block;font-size:26px;font-weight:300}.tile span{font-size:11px;letter-spacing:1.5px;
+font:14px/1.55 "Cascadia Mono",Consolas,"Lucida Console",monospace}
+header{height:190px;position:relative;overflow:hidden;
+background:linear-gradient(#7ec4e8 0%,#ecc484 55%,#e8964a 100%)}
+header svg{position:absolute;left:0;right:0;bottom:0;width:100%;height:120px}
+header h1{position:absolute;top:44px;width:100%;text-align:center;margin:0;font-weight:400;font-size:30px;
+letter-spacing:.9em;text-indent:.9em;color:var(--ink);text-shadow:1px 1px 0 #5a4a3a}
+header p{position:absolute;top:96px;width:100%;text-align:center;margin:0;font-style:italic;color:#fff8ec}
+main{max-width:1060px;margin:0 auto;padding:20px 16px 60px}
+h2{font-size:11px;letter-spacing:.35em;text-transform:uppercase;color:var(--muted);font-weight:400;margin:0 0 12px}
+.sub{color:var(--muted);margin:4px 0 22px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.tile,.card{background:var(--card);border-radius:14px;padding:14px 16px}
+.tile b{display:block;font-size:26px;font-weight:400}.tile span{font-size:10px;letter-spacing:.3em;
 text-transform:uppercase;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
 gap:16px;margin-bottom:16px}svg{width:100%;height:auto;display:block}svg text{fill:var(--muted);font-size:11px}
-table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:right;padding:6px 8px;
-border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:600;font-size:12px}th:first-child,td:first-child{text-align:left}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:right;padding:6px 8px;
+border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:400;font-size:11px}th:first-child,td:first-child{text-align:left}
 td.l{text-align:left;color:var(--muted)}ul{margin:0;padding-left:18px}li{margin:4px 0}.tag{display:inline-block;
-background:var(--accent);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px}.scroll{overflow-x:auto}
-.bar{position:relative;height:12px;border-radius:6px;background:var(--line);margin:8px 0 6px}
-.fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--accent)}
-.town{position:absolute;top:-3px;width:2px;height:18px;background:var(--muted);opacity:.5}
-.legend{font-size:12px;color:var(--muted)}.legend i{display:inline-block;width:10px;height:3px;margin:0 5px 3px 10px}
+background:var(--ink);color:var(--bg);border-radius:999px;padding:2px 12px;font-size:12px}.scroll{overflow-x:auto}
+.bar{position:relative;height:10px;border-radius:5px;background:var(--line);margin:8px 0 6px}
+.fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--ink)}
+.town{position:absolute;top:-3px;width:2px;height:16px;background:var(--muted);opacity:.5}
+.legend{font-size:11px;color:var(--muted)}.legend i{display:inline-block;width:10px;height:3px;margin:0 5px 3px 10px}
 """
+
+HILLS_SVG = ('<svg viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true">'
+             '<circle cx="690" cy="40" r="26" fill="#fff4d6"/>'
+             '<path d="M0 50 C150 20 260 60 400 38 S700 10 820 40 S960 30 1000 36 V120 H0Z" fill="#6b5a45"/>'
+             '<path d="M0 72 C120 52 300 86 460 62 S760 50 880 70 S980 64 1000 66 V120 H0Z" fill="#4f4a42"/>'
+             '<path d="M0 96 C200 80 360 104 520 90 S820 82 1000 92 V120 H0Z" fill="#2f3538"/></svg>')
 
 
 def _esc(x) -> str:
@@ -55,7 +66,7 @@ def _weekly_svg(coach: Coach, weeks: int = 12) -> str:
     for i, d in enumerate(data):
         bh = d["minutes"] / top * (h - pad - 10)
         x = pad + i * bw + 4
-        colour = "var(--good)" if coach.goal_met(d) else "var(--accent)"
+        colour = "var(--ink)" if coach.goal_met(d) else "var(--line)"
         bars.append(f'<rect x="{x:.1f}" y="{h - pad - bh:.1f}" width="{bw - 8:.1f}" height="{bh:.1f}" rx="3" '
                     f'fill="{colour}"><title>{d["start"]:%d %b}: {d["rides"]} rides, {d["minutes"]:.0f} min</title></rect>')
         if i % 2 == 0:
@@ -173,8 +184,8 @@ def render_dashboard(coach: Coach) -> str:
         for r in reversed(coach.rides))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Ride Book</title><style>{CSS}</style></head>
-<body><main><h1>Ride book</h1><p class="sub">Trainer data only &middot; updated {datetime.now():%a %d %b %Y %H:%M}
-{f"&middot; since {life['since']:%d %b %Y}" if life['since'] else ""}</p>
+<body><header>{HILLS_SVG}<h1>RIDE BOOK</h1><p>trainer data only &middot; updated {datetime.now():%a %d %b %Y %H:%M}
+{f"&middot; since {life['since']:%d %b %Y}" if life['since'] else ""}</p></header><main>
 <div class="tiles">{tile_html}</div>
 <div class="card" style="margin-bottom:16px"><h2>Next ride</h2><span class="tag">{_esc(title_of(key, coach))}</span>
 &nbsp;{_esc(why)}{f'<p class="sub">{_esc(plan)}</p>' if plan else ""}</div>

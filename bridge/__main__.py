@@ -253,9 +253,13 @@ def plausible(bike):
     return replace(bike, **bad) if bad else bike
 
 
-async def run(args: argparse.Namespace, source_fn=None) -> None:
+async def run(args: argparse.Namespace, source_fn=None, hooks=None) -> None:
     """One ride. source_fn(on_packet, on_state) is an optional coroutine function supplying trainer
-    packets instead of Bluetooth (tests and fuzzing); the ride ends when the source returns."""
+    packets instead of Bluetooth (tests and fuzzing); the ride ends when the source returns.
+
+    hooks (the ride window, bridge/app.py) is optional: hooks.status(dict) once a second, hooks.message(text)
+    for coach messages, hooks.stop (a threading.Event) ends the ride, and hooks.finished(result) gets the
+    summary once the ride is over. With hooks there is no console menu, feel prompt or browser dashboard."""
     stamp = timestamp()
     event_path = setup_event_log(args.log_dir, stamp, args.verbose)
     ride = RideLog(args.log_dir, stamp)
@@ -294,7 +298,7 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
     workout_key = args.workout
     if workout_key == "suggested":
         workout_key = coach.suggest()[0]
-    if args.menu and workout_key is None and source_fn is None:
+    if args.menu and workout_key is None and source_fn is None and hooks is None:
         workout_key, args.gravel = choose_workout(coach, gravel=args.gravel, detected=road.surface)
     runner = None
     if workout_key:
@@ -342,6 +346,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             cues.play(cue)
         state["message"], state["message_until"] = message, time.monotonic() + seconds
         log.info("coach: %s", message)
+        if hooks is not None:
+            hooks.message(message)
         print("\n" + message.replace("·", "-"), flush=True)  # the console code page lacks the dot
 
     def on_trainer_event(mode: str, label: str) -> None:
@@ -580,6 +586,13 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                     log.info("road surface from the game: %s (%s)", changed, road.world)
             if stats.started_at is not None and not state["paused"]:
                 coach_tick(now)
+            if hooks is not None:
+                hooks.status({"conn": conn, "connected": state["conn"] == "connected", "focused": focused,
+                              "paused": state["paused"], "launched": state["launched"],
+                              "power": state["power"], "cadence": state["cadence"], "ride_s": ride_time(now),
+                              "miles": stats.distance_km / 1.609344, "limit": state["limit"],
+                              "units": args.units, "workout": state.get("workout_status"),
+                              "workout_title": runner.w.title if runner else None})
             await asyncio.sleep(1.0)
 
     def coach_tick(now: float) -> None:
@@ -650,8 +663,16 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 print("\n" + msg, flush=True)
                 return
 
+    async def stop_watch() -> None:
+        """Ends the ride when the window asks (its End ride button)."""
+        while not hooks.stop.is_set():
+            await asyncio.sleep(0.2)
+        log.info("ride ended from the window")
+
     tasks = [asyncio.ensure_future(source), asyncio.ensure_future(output_loop()),
              asyncio.ensure_future(status_loop()), asyncio.ensure_future(idle_watch())]
+    if hooks is not None:
+        tasks.append(asyncio.ensure_future(stop_watch()))
     if control.enabled:
         tasks.append(asyncio.ensure_future(control.run()))
     try:
@@ -690,6 +711,10 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 except Exception:
                     log.exception("could not save FTP")
         moving_s = 0.0
+        result = {"stamp": stamp, "path": ride.path, "workout": workout_key, "summary": None, "ride": None,
+                  "coach": coach, "text": None, "ftp_set": ftp_set, "ramp_ftp": None}
+        if runner is not None and runner.w.ramp and runner.result_ftp:
+            result["ramp_ftp"] = runner.result_ftp
         try:  # summary, coach report and scoreboard, from the trainer's data only
             current = summarize_csv(ride.path, args.rider_kg)
             moving_s = current.moving_s
@@ -704,16 +729,17 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
             if this is not None:
                 text += "\n\n" + board.scoreboard_text()
             saved = save_summary(ride.path, text)
+            result.update(summary=current, ride=this, coach=board, text=text)
             print("\n" + text + (f"\nsaved: {saved}" if saved else ""), flush=True)
             if coach.rides and current.moving_s >= 60:
                 prev = coach.rides[-1]
                 print(compare_line(current, SimpleNamespace(moving_s=prev.moving_s, avg_power_w=prev.avg_w,
                                                             work_kj=prev.work_kj)), flush=True)
-            if args.feel and source_fn is None and current.moving_s >= 300:
+            if args.feel and source_fn is None and hooks is None and current.moving_s >= 300:
                 ask_feel(Path(args.log_dir), stamp)
         except Exception:
             log.exception("could not summarize the ride")
-        if (args.dashboard and source_fn is None and not args.sim and not args.dry_run and moving_s >= 60
+        if (args.dashboard and source_fn is None and hooks is None and not args.sim and not args.dry_run and moving_s >= 60
                 and sys.platform == "win32"):
             open_dashboard(Path(args.log_dir))
         try:
@@ -727,6 +753,8 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
         cues.play("ride_end")
         cues.close()
         close_event_log()
+        if hooks is not None:
+            hooks.finished(result)
 
 
 def main(argv=None) -> int:

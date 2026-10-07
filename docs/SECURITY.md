@@ -94,6 +94,15 @@ The rest checked out:
   junctions are never followed.
 - **Game auto-start and opening files.** `os.startfile` opens only a fixed `steam://rungameid/3431300` URL
   and files the bridge just wrote in `logs/`. `report.py` starts Explorer with a fixed argument list.
+- **The ride window (`bridge/app.py`, added the same day).** Built on tkinter from the standard library:
+  no web server, no listening port, no browser, no network, and no new package. The ride runs on a worker
+  thread and the window only reads its status and can ask it to end; drawing errors mid-ride go to a crash
+  report and never stop the ride, so the trainer is always handed back. The hidden recorder is started with
+  a fixed argument list (the venv's own `pythonw.exe` and `tools/ride_recorder.py`, no shell,
+  `CREATE_NO_WINDOW`), and only for real rides. A named mutex allows one window at a time, so two bridges
+  can't fight over the trainer and the game. Closing the window mid-ride asks first and ends the ride
+  through the same path as the auto-end; the process waits up to 10 s for the trainer to be released. The
+  desktop shortcuts point at the venv's `pythonw.exe` with fixed arguments; the icon is a file in the repo.
 - **Dependencies and CI.** No new packages and no changes to the lock files or the workflow since the
   first review. `pip-audit` was not re-run this time.
 - **Suite:** 221 tests pass.

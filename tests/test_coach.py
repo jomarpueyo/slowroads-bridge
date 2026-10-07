@@ -170,9 +170,9 @@ def test_text_outputs():
 def test_dashboard_renders_without_internet_resources():
     rides = [ride(datetime(2026, 10, d, 8), 30 + d, 120 + d, workout="tempo") for d in range(1, 7)]
     page = render_dashboard(Coach(rides, ftp_set=160, today=TODAY))
-    assert page.startswith("<!doctype html>") and "<svg" in page and "Ride book" in page
+    assert page.startswith("<!doctype html>") and "<svg" in page and "RIDE BOOK" in page
     assert "http://" not in page and "https://" not in page and "<script" not in page
-    assert "prefers-color-scheme:dark" in page
+    assert "--bg:#2f3538" in page   # the game's slate, always (Slow Roads has no light theme)
     empty = render_dashboard(Coach([], today=TODAY))
     assert "No power curve yet" in empty
 

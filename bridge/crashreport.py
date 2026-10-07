@@ -152,7 +152,8 @@ def write_report(exc: BaseException, tool: str, log_dir: Path | None = None) -> 
             return path
         except Exception:
             continue
-    sys.stderr.write(text)
+    if sys.stderr:  # None under pythonw (the ride window)
+        sys.stderr.write(text)
     return None
 
 

@@ -5,11 +5,11 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
 ## Every ride
 
 1. Close the Wahoo app and Zwift. Unplug any real game controllers. Wake the KICKR (pedal a few strokes).
-2. Double-click **`ride.bat`** in this folder (or the **Slow Roads Ride** shortcut on your desktop). It starts two windows:
-   - the bridge (live status line), and
-   - a minimized recorder that logs the game side for tuning.
-
-   The bridge opens with a start menu: **Enter** for a free ride, or a workout (see [Coach](#coach-scoreboard-ride-book-and-workouts)).
+2. Double-click **Slow Roads Ride** on your desktop (or `ride.bat` in this folder). The ride window opens
+   with your week and today's suggestion. Pick **free ride** or a workout (see
+   [Coach](#coach-scoreboard-ride-book-and-workouts)) and the **road feel** (auto follows the game's road),
+   then press **begin** (or Enter). A hidden recorder logs the game side for tuning; it stops on its own.
+   Only one ride window can be open at a time.
 3. When the trainer connects (rising beep), the bridge **starts Slow Roads through Steam** if it isn't
    already running (`--no-launch-game` to start it yourself). In the game:
    - Assist **AUTOSTEER**. On the controller, X cycles AUTOSTEER → AUTOSPEED → AUTODRIVE and
@@ -20,7 +20,8 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    - A **first-person or interior camera**. In third-person view the game ignores the mouse wheel for
      the speed limit (reported on the Steam forum), so the bridge can't change it.
    - **Click into the game and leave it focused.** The game ignores the controller while another
-     window is in front, and the status line then shows `NO GAME FOCUS`.
+     window is in front, and the ride window then says `click into the game`. Once the game is in front
+     the ride window minimizes itself; open it from the taskbar to see live time, miles, watts and rpm.
    - Leave the speedometer (bottom right) uncovered so the recorder can read it.
 4. Ride. The bridge turns your speed into the game's speed limit (5 mph steps), and the game holds
    the car at that limit, uphill and down. **Stop pedalling and the car coasts** (status `coasting`):
@@ -30,10 +31,15 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    riding easier than before. It never reverses. The trainer gives you something to push against: it
    holds workout targets (ERG) and otherwise feels like a flat road, draggier on gravel (see
    [Trainer resistance](#trainer-resistance-and-road-feel)).
-5. Press **Ctrl+C** in the bridge window to finish. The recorder stops on its own.
-   Or just get off the bike: after **3 minutes without pedalling** the ride ends by itself
-   (`--idle-end`; the countdown only starts once you've pedalled, and pausing with F8 stops it).
-6. After rides of 5+ minutes it asks **how did it feel?** (one key, 1-5; Enter skips). Then it prints a **ride summary** worked out from the trainer's data only (never the game): time
+5. Get off the bike: after **3 minutes without pedalling** the ride ends by itself (`--idle-end`; the
+   countdown only starts once you've pedalled, and pausing with F8 stops it). Or press **end ride** in the
+   ride window (closing the window mid-ride asks first, then ends the ride the same way). Either way the
+   trainer is handed back and the summary is written.
+6. The ride window comes back with your ride. After rides of 5+ minutes it asks **how did it feel?**
+   (click, or press 1-5). Below that: your power curve against your all-time best, minutes per week
+   against your goal, the journey, notes for next time and the suggested next ride. **save picture**
+   makes a share card, **ride again** goes back to the start. The full **ride summary**, worked out from
+   the trainer's data only (never the game), is saved as `logs/summary-*.txt`: time
    (total and moving), distance and speed, average/max/normalized power, best 5 s / 1 min / 5 min / 20 min
    power, work (kJ, roughly kcal) and cadence. It is saved as `logs/summary-*.txt`. Print any ride again with
    `.venv\Scripts\python -m bridge.summary logs\ride-YYYYMMDD-HHMMSS.csv` (no file = the latest ride).
@@ -44,16 +50,19 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
      steady vs surgy pacing, coasting, fading or a negative split, and a target for next time.
    - Under it, one line compares the ride with your previous one (time, average power, work).
    - It ends with the **scoreboard** (see [After the ride](#after-the-ride)).
-   - Then the **ride book charts** open in your browser (`logs\dashboard.html`, with this ride in them).
-     Rides under a minute, `--sim` and `--dry-run` skip it; `--no-dashboard` (or `"dashboard": 0`) turns it off.
+   - **Console version:** `ride-console.bat` runs the same ride in a console window (status line, keyboard
+     menu, Ctrl+C to stop) and opens the charts in your browser afterwards (`logs\dashboard.html`;
+     `--no-dashboard` or `"dashboard": 0` turns that off).
    Totals across rides: `.venv\Scripts\python -m bridge.summary --week` (or `--month`, `--all`).
 
 ## Coach: scoreboard, ride book and workouts
 
 Everything here comes from the trainer's data in `logs/` and stays on this PC.
 
-**Start menu.** `ride.bat` opens with your week (rides and minutes against your goal, streak, days since
-your last ride) and today's suggested workout. Press **Enter** (or wait 20 s) for a free ride, **1** for the
+**Start screen.** The ride window opens with your week (rides and minutes against your goal, streak) and
+today's suggested workout; pick one and press **begin**. The console version's menu (`ride-console.bat`)
+shows your week (rides and minutes against your goal, streak, days since your last ride) and today's
+suggested workout. Press **Enter** (or wait 20 s) for a free ride, **1** for the
 suggestion, **2-7** for another workout. Skip the menu with `ride.bat --workout endurance` (or `suggested`).
 
 **Workouts** (targets are a share of your FTP; the overlay shows the block, time left and the target in
@@ -87,7 +96,7 @@ the next ride.
 
 ### Ride book
 
-Double-click **`rides.bat`** for the scoreboard here and charts in your browser, or:
+Double-click **Slow Roads Rides** on the desktop (or `rides.bat`) for your latest ride, records and charts in the ride window. From a terminal:
 
 | Command | |
 | --- | --- |
@@ -288,7 +297,7 @@ recordings are how we measure that.
 | `logs/bridge-*.log` | Connects, drops, errors, settings used |
 | `logs/summary-*.txt` | Ride summary (trainer data only) |
 | `logs/ridebook.json` | Ride book index, plan, challenge, journey and how rides felt |
-| `logs/dashboard.html` | Charts from `rides.bat` (no scripts, no network) |
+| `logs/dashboard.html` | Charts page from `python -m bridge.dashboard` and the console version (no scripts, no network) |
 | `logs/share-*.png` | Share cards from `bridge.sharecard` |
 | `logs/crash-*.txt` | Written if something crashes; personal details already removed |
 | `logs/report-*.zip` | Made by `report.bat` to send to the developer |
@@ -317,7 +326,7 @@ Run these from this folder in PowerShell.
 | `.venv\Scripts\python -m bridge.gamestate` | The road the game has saved (gravel or tarmac) |
 | `.venv\Scripts\python -m bridge.plan` | Your ride plan, this month's challenge and your journey |
 | `.venv\Scripts\python -m bridge.cleanup --dry-run` | Which old logs the after-ride cleanup would delete (drop `--dry-run` to delete now) |
-| `powershell -ExecutionPolicy Bypass -File scripts\shortcuts.ps1` | Desktop shortcuts for ride.bat and report.bat (setup does this too) |
+| `powershell -ExecutionPolicy Bypass -File scripts\shortcuts.ps1` | Desktop shortcuts: Slow Roads Ride, Slow Roads Rides (ride book) and Slow Roads Report (setup does this too) |
 | `report.bat` | Bundle crash reports, recent logs and the environment check into one zip to send to the developer |
 | `.venv\Scripts\python -m bridge.summary` | Ride summary (trainer data only) for the last ride, or pass a `ride-*.csv` |
 | `.venv\Scripts\python -m pytest -q` | Test suite (includes a short fuzz test of the whole bridge) |
