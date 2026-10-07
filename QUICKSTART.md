@@ -8,6 +8,8 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
 2. Double-click **`ride.bat`** in this folder (or the **Slow Roads Ride** shortcut on your desktop). It starts two windows:
    - the bridge (live status line), and
    - a minimized recorder that logs the game side for tuning.
+
+   The bridge opens with a start menu: **Enter** for a free ride, or a workout (see [Coach](#coach-scoreboard-ride-book-and-workouts)).
 3. When the trainer connects (rising beep), the bridge **starts Slow Roads through Steam** if it isn't
    already running (`--no-launch-game` to start it yourself). In the game:
    - Assist **AUTOSTEER**. On the controller, X cycles AUTOSTEER → AUTOSPEED → AUTODRIVE and
@@ -25,11 +27,13 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    the limit stays put and gravity decides, so it rolls faster downhill and slows on climbs. After
    12 s without pedalling it eases to a stop (status `releasing`). Pedal again any time to resume: the
    limit holds where it was for 8 s while your watts build, then eases down a step at a time if you're
-   riding easier than before. It never reverses.
+   riding easier than before. It never reverses. The trainer gives you something to push against: it
+   holds workout targets (ERG) and otherwise feels like a flat road, draggier on gravel (see
+   [Trainer resistance](#trainer-resistance-and-road-feel)).
 5. Press **Ctrl+C** in the bridge window to finish. The recorder stops on its own.
    Or just get off the bike: after **3 minutes without pedalling** the ride ends by itself
    (`--idle-end`; the countdown only starts once you've pedalled, and pausing with F8 stops it).
-6. The bridge prints a **ride summary** worked out from the trainer's data only (never the game): time
+6. After rides of 5+ minutes it asks **how did it feel?** (one key, 1-5; Enter skips). Then it prints a **ride summary** worked out from the trainer's data only (never the game): time
    (total and moving), distance and speed, average/max/normalized power, best 5 s / 1 min / 5 min / 20 min
    power, work (kJ, roughly kcal) and cadence. It is saved as `logs/summary-*.txt`. Print any ride again with
    `.venv\Scripts\python -m bridge.summary logs\ride-YYYYMMDD-HHMMSS.csv` (no file = the latest ride).
@@ -39,6 +43,7 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
    - **For next ride**: up to six plain suggestions from the ride's data: new personal bests, cadence,
      steady vs surgy pacing, coasting, fading or a negative split, and a target for next time.
    - Under it, one line compares the ride with your previous one (time, average power, work).
+   - It ends with the **scoreboard** (see [After the ride](#after-the-ride)).
    Totals across rides: `.venv\Scripts\python -m bridge.summary --week` (or `--month`, `--all`).
 
 ## Coach: scoreboard, ride book and workouts
@@ -63,6 +68,40 @@ green when you're on it, orange when off; a double beep marks each new block):
 | `ramp` | ramp test: 1 min steps +20 W until you can't hold one | **measures your FTP** (75% of your best minute) and saves it |
 
 In a workout the trainer holds the target for you (**ERG**: the overlay says `ERG W`); see below.
+
+### During any ride
+
+The overlay also shows short coach messages with a beep: **stand up & stretch** every
+20 min (`--comfort-break`, 0 = off), a check-in every 15 min with a **drink water** reminder and its own
+three-note beep (`--no-drink` or `"drink": 0` to drop it), **new bests** live (1 / 5 / 20 min power) and
+**lifetime mile milestones** (10, 25, 50, 100 ...).
+
+### After the ride
+
+The summary adds training load (TSS and intensity, needs an FTP), time in zones, your
+longest steady stretch and coasts, new records, tips, and the **scoreboard**: lifetime miles, hours, rides
+and kJ, this week vs your goal, streak, records, fitness / fatigue / form, strengths, what to work on, and
+the next ride.
+
+### Ride book
+
+Double-click **`rides.bat`** for the scoreboard here and charts in your browser, or:
+
+| Command | |
+| --- | --- |
+| `.venv\Scripts\python -m bridge.ridebook` | scoreboard |
+| `.venv\Scripts\python -m bridge.ridebook list` | all rides, numbered (1 = newest) |
+| `.venv\Scripts\python -m bridge.ridebook show 3` | one ride in full, with its power curve |
+| `.venv\Scripts\python -m bridge.ridebook hide 3` / `unhide 3` | leave a test ride out of totals and records |
+| `.venv\Scripts\python -m bridge.ridebook note 1 sore seat after 25 min` | note a ride |
+| `.venv\Scripts\python -m bridge.dashboard` | `logs\dashboard.html`: tiles, minutes per week vs goal, power curve, fitness and form, records, all rides |
+| `.venv\Scripts\python -m bridge.workouts` | the workouts with your targets, and today's suggestion |
+
+### Your goals and body
+
+In `settings.json` under `"ride"`, or as options: `"weekly_rides": 3`,
+`"weekly_minutes": 90` (the week counts when either is met), `"rider_kg": 85` (you + about 9 kg of bike:
+distance and speed), `"ftp"` (or let the ramp test set it), `"comfort_break": 20`.
 
 ## Staying motivated (quiet extras)
 
@@ -117,32 +156,6 @@ Check what the game has saved: `.venv\Scripts\python -m bridge.gamestate`.
 
 **If you did a ramp test before ERG existed, redo it:** without resistance it tends to stop early and give
 too low an FTP (compare it with your best 20 minutes x 0.95 on the scoreboard).
-
-**During any ride** the overlay also shows short coach messages with a beep: **stand up & stretch** every
-20 min (`--comfort-break`, 0 = off), a check-in every 15 min with a **drink water** reminder and its own
-three-note beep (`--no-drink` or `"drink": 0` to drop it), **new bests** live (1 / 5 / 20 min power) and
-**lifetime mile milestones** (10, 25, 50, 100 ...).
-
-**After the ride** the summary adds training load (TSS and intensity, needs an FTP), time in zones, your
-longest steady stretch and coasts, new records, tips, and the **scoreboard**: lifetime miles, hours, rides
-and kJ, this week vs your goal, streak, records, fitness / fatigue / form, strengths, what to work on, and
-the next ride.
-
-**Ride book** (double-click **`rides.bat`**: scoreboard here, charts in your browser):
-
-| Command | |
-| --- | --- |
-| `.venv\Scripts\python -m bridge.ridebook` | scoreboard |
-| `.venv\Scripts\python -m bridge.ridebook list` | all rides, numbered (1 = newest) |
-| `.venv\Scripts\python -m bridge.ridebook show 3` | one ride in full, with its power curve |
-| `.venv\Scripts\python -m bridge.ridebook hide 3` / `unhide 3` | leave a test ride out of totals and records |
-| `.venv\Scripts\python -m bridge.ridebook note 1 sore seat after 25 min` | note a ride |
-| `.venv\Scripts\python -m bridge.dashboard` | `logs\dashboard.html`: tiles, minutes per week vs goal, power curve, fitness and form, records, all rides |
-| `.venv\Scripts\python -m bridge.workouts` | the workouts with your targets, and today's suggestion |
-
-**Your goals and body** (in `settings.json` under `"ride"`, or as options): `"weekly_rides": 3`,
-`"weekly_minutes": 90` (the week counts when either is met), `"rider_kg": 85` (you + about 9 kg of bike:
-distance and speed), `"ftp"` (or let the ramp test set it), `"comfort_break": 20`.
 
 ## During the ride: overlay, keys and sounds
 
@@ -234,16 +247,22 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | Use a different trainer | `--trainer pair` (forget the saved one and pair with the first FTMS trainer found) or `--trainer AA:BB:CC:DD:EE:FF` | saved in `settings.json` |
 | Previous model-based control (no in-game limit) | `--mode speed` (uses `--ramp`, `--max-throttle`, `--max-brake`) | limit |
 | Old watts-to-throttle behaviour | `--mode power` | limit |
-
 | Your FTP for the overlay's %FTP and zones | `--ftp` (watts; 0 = estimate from your best 20 min) | estimate |
 | No overlay | `--no-overlay` (F10 hides it for a moment) | on |
+| Overlay numbers always bright / brighter when faded | `--overlay-fade 0` / `--overlay-dim 0.5` | 20 s / 0.35 |
+| Trainer resistance | `--no-resistance`, `--no-erg`, `--no-road-feel`, `--gravel` / `--tarmac`, `--rumble` (see [Trainer resistance](#trainer-resistance-and-road-feel)) | on, road from the game |
+| Stand-up reminder / drink reminder | `--comfort-break` (minutes; 0 = off) / `--no-drink` | 20 / on |
+| No ghost / no "how did it feel?" | `--no-ghost` / `--no-feel` | on |
+| Weekly goal | `--weekly-rides`, `--weekly-minutes` (the week counts when either is met) | 3, 90 |
 | No beeps / no hotkeys / start the game yourself | `--no-sounds`, `--no-hotkeys`, `--no-launch-game` | on |
 | Ride ends by itself after this long without pedalling | `--idle-end` (minutes; 0 = never) | 3 |
 | Delete bulky logs (screenshots, 20 Hz logs) older than | `--keep-days` (ride CSVs and summaries are always kept; 0 = never) | 30 |
 
 To make a change permanent, add it under `"ride"` in `settings.json` (create it by copying `settings.example.json`), for example `"gear": 2.5`
-(F6/F7 do that for the gear). The comfort options use the keys `sounds`, `hotkeys` and `launch_game`
-and `overlay` (1 = on, 0 = off), `idle_end`, `keep_days` and `ftp`.
+(F6/F7 do that for the gear). The on/off options use the keys `sounds`, `hotkeys`, `launch_game`,
+`overlay`, `drink`, `ghost`, `feel`, `resistance`, `erg` and `road_feel` (1 = on, 0 = off); the others
+are `idle_end`, `keep_days`, `ftp`, `overlay_fade`, `overlay_dim`, `gravel`, `rumble`, `rider_kg`,
+`weekly_rides`, `weekly_minutes` and `comfort_break`.
 
 ## When to recalibrate
 
@@ -265,6 +284,9 @@ recordings are how we measure that.
 | `logs/drive-*.csv` | Every controller tick (20 Hz): target, throttle, brake; `car_est_kmh` is the game limit set (limit mode) or the model estimate (speed mode) |
 | `logs/bridge-*.log` | Connects, drops, errors, settings used |
 | `logs/summary-*.txt` | Ride summary (trainer data only) |
+| `logs/ridebook.json` | Ride book index, plan, challenge, journey and how rides felt |
+| `logs/dashboard.html` | Charts from `rides.bat` (no scripts, no network) |
+| `logs/share-*.png` | Share cards from `bridge.sharecard` |
 | `logs/crash-*.txt` | Written if something crashes; personal details already removed |
 | `logs/report-*.zip` | Made by `report.bat` to send to the developer |
 | `logs/speed-*.csv` | Recorder: speedometer read from the screen (~5 Hz) |
@@ -289,6 +311,8 @@ Run these from this folder in PowerShell.
 | `.venv\Scripts\python tools\probe_rates.py` | How often the KICKR sends each data stream |
 | `.venv\Scripts\python tools\experiments.py limiter --focus` | Testing only: game experiments (`limiter`, `holds`, `buttons`, `limitrange`, `limitstep`). Takes over the game window and drives the car |
 | `.venv\Scripts\python -m bridge.summary --week` | Totals for the last 7 days (`--month`, `--all`); scripted `--sim` rides and rides under 1 min are left out |
+| `.venv\Scripts\python -m bridge.gamestate` | The road the game has saved (gravel or tarmac) |
+| `.venv\Scripts\python -m bridge.plan` | Your ride plan, this month's challenge and your journey |
 | `.venv\Scripts\python -m bridge.cleanup --dry-run` | Which old logs the after-ride cleanup would delete (drop `--dry-run` to delete now) |
 | `powershell -ExecutionPolicy Bypass -File scripts\shortcuts.ps1` | Desktop shortcuts for ride.bat and report.bat (setup does this too) |
 | `report.bat` | Bundle crash reports, recent logs and the environment check into one zip to send to the developer |
@@ -319,6 +343,7 @@ Attach the zip to a [new issue](https://github.com/jomarpueyo/slowroads-bridge/i
 | `.venv\Scripts\python` not found | You're in the wrong folder: `cd` into `slowroads-bridge` first, or use the `.bat` files |
 | Stuck on `scanning` | Wake the KICKR. Close the Wahoo app and Zwift (they hold the connection). New or replaced trainer: `ride.bat --trainer pair` |
 | Status says `no FTMS data`, or the window prints "can't get data from the trainer after 3 tries" | The trainer connected but isn't offering its fitness data. Close Zwift, the Wahoo app and any **phone** app connected to it; remove it from Windows Bluetooth settings if it's paired there; then unplug the trainer for 10 s. The bridge keeps retrying on its own |
+| No resistance, or the log says "trainer didn't give control" | Another app is controlling the trainer: close Zwift, the Wahoo app and phone apps. The bridge retries every 15 s. To ride without it: `--no-resistance` |
 | Status says `no data` | The trainer is connected but sending nothing for 3 s. Throttle is held at 0. Pedal |
 | Car doesn't move | Click into the game window (the controller only works while it's focused). Start the bridge before the game. Unplug real controllers |
 | Car runs away | Speed control is off or in cruise mode: turn on the padlock, in limit mode. Or the gearbox is Manual: set Automatic |
