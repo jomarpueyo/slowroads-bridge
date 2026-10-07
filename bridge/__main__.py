@@ -125,6 +125,8 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="don't compare with your last similar ride during the ride")
     c.add_argument("--no-feel", dest="feel", action="store_false", default=True,
                    help="don't ask 'how did it feel?' after the ride")
+    c.add_argument("--no-dashboard", dest="dashboard", action="store_false", default=True,
+                   help="don't open the ride book charts (logs/dashboard.html) in your browser after the ride")
     t = ap.add_argument_group("trainer resistance (settings.json keys: resistance, erg, road_feel, gravel, rumble)")
     t.add_argument("--no-resistance", dest="resistance", action="store_false", default=True,
                    help="never control the trainer's resistance (it stays as it is, like before 2026-10-05)")
@@ -215,6 +217,18 @@ def ask_feel(log_dir: Path, stamp: str, timeout_s: float = 30.0) -> int | None:
         time.sleep(0.05)
     print("skipped")
     return None
+
+
+def open_dashboard(log_dir: Path) -> None:
+    """After a real ride: refresh logs/dashboard.html (this ride included) and open it in the browser."""
+    try:
+        from .dashboard import write_dashboard
+
+        out = write_dashboard(log_dir)
+        os.startfile(str(out))
+        print(f"ride book charts opened in your browser: {out}", flush=True)
+    except Exception:
+        log.exception("could not open the dashboard")
 
 
 def drive_config(args: argparse.Namespace) -> DriveConfig:
@@ -675,8 +689,10 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                           f"{runner.best_minute:.0f} W). Saved to settings.json.", flush=True)
                 except Exception:
                     log.exception("could not save FTP")
+        moving_s = 0.0
         try:  # summary, coach report and scoreboard, from the trainer's data only
             current = summarize_csv(ride.path, args.rider_kg)
+            moving_s = current.moving_s
             this = analyse_ride(ride.path, args.rider_kg)
             board = Coach(coach.rides + ([this] if this else []), ftp_set, coach.weekly_rides, coach.weekly_minutes)
             text = format_summary(current)
@@ -697,6 +713,9 @@ async def run(args: argparse.Namespace, source_fn=None) -> None:
                 ask_feel(Path(args.log_dir), stamp)
         except Exception:
             log.exception("could not summarize the ride")
+        if (args.dashboard and source_fn is None and not args.sim and not args.dry_run and moving_s >= 60
+                and sys.platform == "win32"):
+            open_dashboard(Path(args.log_dir))
         try:
             removed = remove(old_entries(Path(args.log_dir), args.keep_days, active=stamp))
             if removed:

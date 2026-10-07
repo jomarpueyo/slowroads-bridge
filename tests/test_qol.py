@@ -212,3 +212,9 @@ def test_ride_ends_itself_after_idle_minutes(tmp_path, monkeypatch):
 def test_idle_end_waits_for_the_first_pedal_stroke(tmp_path, monkeypatch):
     took, _, _, _ = ride(tmp_path, monkeypatch, 3.0, lambda t: 0, extra=["--idle-end", "0.01"])
     assert took >= 2.9                                                    # never pedalled: no auto-end
+
+
+def test_dashboard_after_ride_option():
+    from bridge.__main__ import parse_args
+    assert parse_args([]).dashboard is True
+    assert parse_args(["--no-dashboard"]).dashboard is False

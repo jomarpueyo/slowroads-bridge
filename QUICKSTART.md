@@ -44,6 +44,8 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
      steady vs surgy pacing, coasting, fading or a negative split, and a target for next time.
    - Under it, one line compares the ride with your previous one (time, average power, work).
    - It ends with the **scoreboard** (see [After the ride](#after-the-ride)).
+   - Then the **ride book charts** open in your browser (`logs\dashboard.html`, with this ride in them).
+     Rides under a minute, `--sim` and `--dry-run` skip it; `--no-dashboard` (or `"dashboard": 0`) turns it off.
    Totals across rides: `.venv\Scripts\python -m bridge.summary --week` (or `--month`, `--all`).
 
 ## Coach: scoreboard, ride book and workouts
@@ -253,7 +255,7 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 | Overlay numbers always bright / brighter when faded | `--overlay-fade 0` / `--overlay-dim 0.5` | 20 s / 0.35 |
 | Trainer resistance | `--no-resistance`, `--no-erg`, `--no-road-feel`, `--gravel` / `--tarmac`, `--rumble` (see [Trainer resistance](#trainer-resistance-and-road-feel)) | on, road from the game |
 | Stand-up reminder / drink reminder | `--comfort-break` (minutes; 0 = off) / `--no-drink` | 20 / on |
-| No ghost / no "how did it feel?" | `--no-ghost` / `--no-feel` | on |
+| No ghost / no "how did it feel?" / no charts after the ride | `--no-ghost` / `--no-feel` / `--no-dashboard` | on |
 | Weekly goal | `--weekly-rides`, `--weekly-minutes` (the week counts when either is met) | 3, 90 |
 | No beeps / no hotkeys / start the game yourself | `--no-sounds`, `--no-hotkeys`, `--no-launch-game` | on |
 | Ride ends by itself after this long without pedalling | `--idle-end` (minutes; 0 = never) | 3 |
@@ -261,7 +263,7 @@ Pass options to `ride.bat` from a terminal in this folder, for example `ride.bat
 
 To make a change permanent, add it under `"ride"` in `settings.json` (create it by copying `settings.example.json`), for example `"gear": 2.5`
 (F6/F7 do that for the gear). The on/off options use the keys `sounds`, `hotkeys`, `launch_game`,
-`overlay`, `drink`, `ghost`, `feel`, `resistance`, `erg` and `road_feel` (1 = on, 0 = off); the others
+`overlay`, `drink`, `ghost`, `feel`, `dashboard`, `resistance`, `erg` and `road_feel` (1 = on, 0 = off); the others
 are `idle_end`, `keep_days`, `ftp`, `overlay_fade`, `overlay_dim`, `gravel`, `rumble`, `rider_kg`,
 `weekly_rides`, `weekly_minutes` and `comfort_break`.
 

@@ -105,7 +105,8 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
 5. After the ride you rate how it felt (1-5) and get a summary from the trainer's data (time, distance,
    average/normalized power, best efforts, kJ, cadence, load, zones), saved in `logs/summary-*.txt`. It
    ends with a scoreboard: lifetime miles, streak, records, form, what to work on and the next ride.
-   **`rides.bat`** opens your ride book: every ride, records and charts, on this PC only.
+   Then your ride book opens in the browser: every ride, records and charts, on this PC only
+   (**`rides.bat`** opens it any time).
 6. Quiet extras keep it going: a welcome back after a break, a ride plan (`python -m bridge.plan`), a
    nudge to finish easy, your lifetime miles as a trip along the Pacific Coast Highway, your last similar
    ride as a ghost, a monthly challenge, and a share card picture of a ride (`python -m bridge.sharecard`).
