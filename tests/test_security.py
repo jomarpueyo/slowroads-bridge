@@ -105,3 +105,16 @@ def test_control_chain_stays_bounded_for_any_int16_power():
             lim, thr = pl.update(tgt, True, pl.is_pedalling(watts, 80), k * 0.05, pushing=push > 1.05)
             thr = pl.push_throttle(thr, push)
             assert 5 <= lim <= 125 and 0.0 <= thr <= 1.0 and math.isfinite(tgt)
+
+
+# ------------------------------------------------------------------ finding 9: ERG targets from a bad FTP
+
+def test_out_of_range_ftp_is_ignored_and_erg_is_capped():
+    from bridge import trainer as tr
+    from bridge.coach import Coach
+    assert Coach([], ftp_set=250).ftp() == (250.0, "set")
+    for typo in (2500, 5000, 10, -100):          # ignored: no rides, so no estimate either
+        assert Coach([], ftp_set=typo).ftp() == (0.0, None)
+    want = tr.decide(enabled=True, workout_status={"target": (3000, 3400)}, paused=False, pedalling=True,
+                     cadence=85, low_cadence_s=0.0, gravel=False, road_feel=True, erg=True, texture=None, now=0.0)
+    assert want.mode == "erg" and want.watts == tr.ERG_MAX_W

@@ -1,15 +1,17 @@
 # Security review
 
-2026-09-27. All findings fixed the same day (see the Status column). Scope: the whole repository — the ride bridge (`bridge/`), the tools
+2026-09-27, updated 2026-10-06 for everything added since (see [Update 2026-10-06](#update-2026-10-06)). All
+findings are fixed (see the Status column). Scope: the whole repository — the ride bridge (`bridge/`), the tools
 (`tools/`), the launchers and setup script, the CI workflow and the git history. Method: threat modelling of
 every untrusted input, fuzzing, verified exploit attempts where it was safe to try, a dependency audit, and a
 search of the history for secrets and personal data.
 
 **Threat model.** A local Windows hobby tool. It opens no network ports and needs no accounts or secrets.
 Its untrusted inputs are: Bluetooth advertisements and packets from any device in range (about 10 m),
-text read off the screen (OCR, testing tools only), the local `settings.json` and `logs/active-ride.txt`,
-and the command line. What it can affect: a virtual Xbox controller, the mouse cursor and wheel, and files
-in the project folder.
+text read off the screen (OCR, testing tools only), the local `settings.json`, `logs/active-ride.txt` and
+`logs/ridebook.json`, the game's own saved settings (read-only, for the road surface), and the command
+line. What it can affect: a virtual Xbox controller, the mouse cursor and wheel, **the trainer's resistance**
+(since 2026-10-05), and files in the project folder.
 
 ## Findings
 
@@ -23,6 +25,7 @@ in the project folder.
 | 6 | Low | **Supply chain.** Dependencies are unpinned (`>=`); `vgamepad` installs from a source archive (it runs a build at install time and bundles the ViGEmBus installer); winget installs the latest versions silently with agreements pre-accepted; `setup.ps1` builds a command with `Invoke-Expression`. | `requirements*.in/.txt`, `scripts/setup.ps1` | **Fixed.** Three hash-locked files (`requirements.txt`, `-calibration.txt`, `-test.txt`) from `.in` sources, installed with `pip --require-hashes`. winget versions are pinned (Python 3.13.15, Git 2.55.0.3, ViGEmBus 1.22.0; `-AllowLatest` to override). `Invoke-Expression` is replaced by a direct call, and the unpinned `pip --upgrade` step is removed. Verified: a fresh hash-checked install plus the full setup run pass. Locking also found that `speedo.py` relied on a package only bleak pulled in; it's now declared. `vgamepad` still builds from its (now hash-pinned) source archive |
 | 7 | Info | **CI hardening.** No explicit `permissions:` (the token uses the repository default), and actions are pinned by tag rather than commit SHA. | `.github/workflows/tests.yml` | **Fixed.** `permissions: contents: read`, `persist-credentials: false`, actions pinned to commits (`checkout` 11d5960a…, `setup-python` a26af69b…), and hash-locked installs. Reproduced locally: 78 passed, 0 skipped |
 | 8 | Info | **Testing tools only.** The OCR parser throws on a tab inside a number (`"6\t.3"`); an OCR call that times out leaves its thread behind; on-screen text is written to CSV as-is (a spreadsheet could read `=`, `+`, `-` or `@` at the start as a formula); `probe_zwift.py` writes a handshake to the trainer; `experiments.py`/`ui.py` take window focus and inject mouse and keyboard input. None of this runs in a normal ride. | `tools/` | **Fixed.** OCR numbers no longer span tabs; OCR stops starting threads after 3 stay hung; OCR text is neutralised (`csv_safe`) before it's written to CSV; `probe_zwift.py` refuses to run without `--handshake`; `experiments.py` announces the takeover with a 3 s cancel window. The UI injection itself is the purpose of those testing tools |
+| 9 | Low (safety) | **ERG targets follow an unchecked FTP.** Workout targets are a share of your FTP, and FTP comes from `--ftp`, `settings.json` or the ramp test with no range check. A typo such as `"ftp": 2500` (for 250) made the trainer hold targets up to its 2000 W maximum; a negative FTP gave 0 W. The rider is never trapped: ERG lets go when you stop pedalling or drop under 45 rpm for 3 s. Found in the 2026-10-06 review. | `bridge/coach.py`, `bridge/trainer.py` | **Fixed.** A set FTP outside 40-600 W is ignored (the estimate from past rides is used instead), and no ERG target above 1000 W is ever sent, whatever the workout asks. Test: `test_out_of_range_ftp_is_ignored_and_erg_is_capped` |
 
 ## Re-test after fixes
 
@@ -54,3 +57,43 @@ in the project folder.
   personal settings are git-ignored.
 - **Safety limits:** the bridge never holds the brake at a stop (Slow Roads would reverse); a stale trainer
   (no data for 3 s) sets throttle to 0.
+
+## Update 2026-10-06
+
+A second pass over everything added since the first review: crash reports and `report.bat`, sounds and
+hotkeys, auto-end and game auto-start, log cleanup, the overlay, the coach (ride book, workouts, dashboard),
+the motivation extras (plan, journey, ghost, share card) and, most important, **trainer control**
+(`bridge/trainer.py`) and **reading the game's road** (`bridge/gamestate.py`). One new finding (9, fixed).
+The rest checked out:
+
+- **Trainer control (new: the bridge now writes to the trainer).** Only the pinned trainer (finding 1) is
+  ever controlled, and `--dry-run` never sends resistance. Every value is clamped before it is sent:
+  ERG 0-1000 W (finding 9), and the road simulation's grade ±40 %, wind ±32 m/s, Crr 0-0.0255 and Cw
+  0-2.55 kg/m. Writes are rate-limited (ERG 1 s, simulation 0.5 s); a refused control request backs off
+  15 s and only logs. ERG lets go when you stop pedalling, under 45 rpm for 3 s, in rest blocks and while
+  paused. The trainer is reset at the end of every ride, including Ctrl+C and crashes (in a `finally`,
+  with a 3 s timeout so shutdown never hangs). `--no-resistance` turns all of it off.
+- **Live ride 2026-10-06 17:30 (43 min, long-ride workout):** control granted once, 26 ERG and 27 road-feel
+  changes as you stopped and started pedalling, the dirt road picked up from the game as gravel, no
+  warnings, and `trainer released (reset: success)` at the end.
+- **Reading the game's road.** Read-only, from the game's own Local Storage folder: files over 8 MB are
+  skipped, only a bounded pattern (one object of at most 400 printable characters after a 13-digit
+  timestamp) is parsed with `json.loads`, and anything unexpected means "unknown road". The game's memory
+  and files are never touched.
+- **Ride book and plan (`logs/ridebook.json`, `logs/ride-index.json`).** Malformed files, wrong types and
+  out-of-range values (feel outside 1-5, unknown challenge kinds) are ignored. Notes you type are
+  HTML-escaped on the dashboard (`dashboard.py`), which has no scripts and makes no network requests.
+- **Crash reports and `report.bat`.** Bluetooth addresses, e-mail addresses, user, home folder and computer
+  name are redacted. Screenshots, the game's settings and `settings.json` are never included.
+- **Hotkeys.** Only F6-F10 are polled (`GetAsyncKeyState`), only while the game is in front; nothing is
+  hooked or recorded, and the keys still reach the game.
+- **Overlay.** A click-through, never-focused window over the game; it shows trainer data only.
+- **Share card.** Shows ride numbers, journey and streak only: no name, trainer or location.
+- **Log cleanup.** Deletes only entries in `logs/` with a ride timestamp in the name, older than
+  `keep_days`; ride CSVs and summaries are always kept, the current ride is skipped, and symlinks and
+  junctions are never followed.
+- **Game auto-start and opening files.** `os.startfile` opens only a fixed `steam://rungameid/3431300` URL
+  and files the bridge just wrote in `logs/`. `report.py` starts Explorer with a fixed argument list.
+- **Dependencies and CI.** No new packages and no changes to the lock files or the workflow since the
+  first review. `pip-audit` was not re-run this time.
+- **Suite:** 221 tests pass.

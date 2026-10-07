@@ -179,8 +179,9 @@ A small overlay sits at the top right of the game, in the style of the game's ow
   FTP), the **rpm** in gold at 100+. Everything is bright while paused. Coach messages and the workout row
   never fade. `--overlay-fade 0` keeps everything bright; `--overlay-dim 0.5` makes faded numbers brighter
   (settings.json: `"overlay_fade"`, `"overlay_dim"`).
-- **FTP:** set yours with `--ftp 220` or `"ftp": 220` in settings.json. Without it the overlay estimates
-  95% of your best 20 minutes in past rides and marks it `EST`. The dot is the zone: grey Z1 recovery,
+- **FTP:** set yours with `--ftp 220` or `"ftp": 220` in settings.json (40-600 W; anything else is taken as
+  a typo and ignored). Without it the overlay estimates 95% of your best 20 minutes in past rides and marks
+  it `EST`. The dot is the zone: grey Z1 recovery,
   blue Z2 endurance, green Z3 tempo, yellow Z4 threshold, orange Z5, red Z6, purple Z7.
 - It shows only while the game is in front, never takes focus, and clicks and scrolls go straight
   through it. **F10** hides/shows it; `--no-overlay` (or `"overlay": 0`) turns it off.

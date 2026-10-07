@@ -61,6 +61,11 @@ def stop(pause: bool = False) -> bytes:
     return bytes([OP_STOP, 0x02 if pause else 0x01])
 
 
+# Highest ERG target the bridge ever sends, whatever the workout asks (docs/SECURITY.md finding 9).
+# A 600 W FTP (coach.FTP_RANGE) gives at most about 690 W in a workout; ramp-test steps stay well under this.
+ERG_MAX_W = 1000
+
+
 def target_power(watts: float, max_w: int = 2000) -> bytes:
     return struct.pack("<Bh", OP_TARGET_POWER, int(round(max(0.0, min(float(max_w), watts)))))
 
@@ -146,7 +151,8 @@ def decide(enabled: bool, workout_status: dict | None, paused: bool, pedalling: 
     if erg and target and low_cadence_s < 3.0:
         lo, hi = target
         watts = (lo + hi) / 2
-        return Want("erg", watts=round(watts / 5) * 5 if hi - lo > 10 else watts)
+        watts = round(watts / 5) * 5 if hi - lo > 10 else watts
+        return Want("erg", watts=max(0, min(ERG_MAX_W, watts)))
     return road
 
 

@@ -18,6 +18,9 @@ REFERENCE = {5: 3.2, 60: 1.75, 300: 1.18, 1200: 1.05}
 PROFILE_NAMES = {5: "sprint (5 s)", 60: "short punch (1 min)", 300: "climbing efforts (5 min)",
                  1200: "threshold (20 min)"}
 ZONES = ((0.55, "Z1"), (0.75, "Z2"), (0.90, "Z3"), (1.05, "Z4"), (1.20, "Z5"), (1.50, "Z6"), (99.0, "Z7"))
+# A set FTP outside this range is a typo (e.g. 2500 for 250) and is ignored: it would set ERG targets
+# far above what anyone can hold (docs/SECURITY.md finding 9).
+FTP_RANGE = (40.0, 600.0)
 MILESTONES = (10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000)
 
 
@@ -84,7 +87,7 @@ class Coach:
 
     def ftp(self) -> tuple[float, str | None]:
         """(watts, 'set' | 'estimate' | None). Estimate = 95% of the best 20 min in the last 120 days."""
-        if self.ftp_set:
+        if self.ftp_set and FTP_RANGE[0] <= self.ftp_set <= FTP_RANGE[1]:
             return float(self.ftp_set), "set"
         cutoff = self.today - timedelta(days=120)
         best20 = max((r.curve.get(1200, 0.0) for r in self.rides if r.when.date() >= cutoff), default=0.0)
