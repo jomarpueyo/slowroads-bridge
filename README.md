@@ -93,9 +93,10 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
 ## Ride
 
 1. Close the Wahoo app and Zwift, and wake the trainer.
-2. Double-click **Slow Roads Ride** on your desktop (or `ride.bat`). One small window opens, in the
-   game's own style: your week, today's suggestion, a free ride or a workout, and the road feel. Press
-   **begin** (or Enter).
+2. Double-click **Slow Roads Ride** on your desktop (or `ride.bat`). One small window opens with your
+   week, today's suggestion, a free ride or a workout, and the road feel. Press **begin** (or Enter). The
+   window, the share card and the charts page share one look: a dusk gradient, light Bahnschrift numbers
+   and small spaced labels, gold for anything new and blue for progress.
 3. In Slow Roads: assist **AUTOSTEER**, gearbox **Automatic**, **speed control on in limit mode** (the
    padlock by the speedometer), and keep the game window focused.
 4. Pedal. The bridge starts the game through Steam once the trainer connects, and the window gets out of
@@ -128,7 +129,7 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 
 | Path | What |
 | --- | --- |
-| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `trainer.py` (resistance: ERG and road feel), `gamestate.py` (road type from the game's saved settings), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `mapper.py` (throttle mapping), `pad.py` (virtual controller), `gamewin.py` (finds the game window, safe scroll points), `ridelog.py` (logs), `summary.py` (ride summary and totals), `cues.py` / `hotkeys.py` (beeps, F6-F10), `cleanup.py` (old logs), `overlay.py` (trainer-data overlay), `ridebook.py` / `coach.py` / `workouts.py` / `companion.py` / `dashboard.py` (ride book, scoreboard, workouts, in-ride coach, charts), `app.py` (the ride window), `motivation.py` / `plan.py` / `sharecard.py` (welcome back, ride plan, journey, ghost, monthly challenge, share card), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
+| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `trainer.py` (resistance: ERG and road feel), `gamestate.py` (road type from the game's saved settings), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `mapper.py` (throttle mapping), `pad.py` (virtual controller), `gamewin.py` (finds the game window, safe scroll points), `ridelog.py` (logs), `summary.py` (ride summary and totals), `cues.py` / `hotkeys.py` (beeps, F6-F10), `cleanup.py` (old logs), `overlay.py` (trainer-data overlay), `ridebook.py` / `coach.py` / `workouts.py` / `companion.py` / `dashboard.py` (ride book, scoreboard, workouts, in-ride coach, charts), `app.py` (the ride window), `theme.py` (the shared look: colours, fonts, charts), `motivation.py` / `plan.py` / `sharecard.py` (welcome back, ride plan, journey, ghost, monthly challenge, share card), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
 | `tools/` | Checks and testing tools: ride summaries and replays, trainer probes, calibration, and **testing-only** screen-OCR experiments that drive the game (`experiments.py`, `speedo.py`, `debugpanel.py`, `ride_recorder.py`) |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest -q`) |
 | `docs/SECURITY.md` | Security review: threat model, findings and what was tested |

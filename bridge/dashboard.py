@@ -16,40 +16,36 @@ from . import motivation as mo
 from .coach import Coach, _hms
 from .ridebook import DURATIONS, duration_label
 
+# Same look as the ride window and the share card (bridge/theme.py): dusk gradient, Bahnschrift, spaced labels.
 CSS = """
-:root{--bg:#2f3538;--card:#3b4347;--ink:#f2efe8;--muted:#9aa3a6;--line:#4a5357;--accent:#f2efe8;--accent2:#ffd678;
---good:#8fd19e;--bad:#e8786a}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
-font:14px/1.55 "Cascadia Mono",Consolas,"Lucida Console",monospace}
-header{height:190px;position:relative;overflow:hidden;
-background:linear-gradient(#7ec4e8 0%,#ecc484 55%,#e8964a 100%)}
-header svg{position:absolute;left:0;right:0;bottom:0;width:100%;height:120px}
-header h1{position:absolute;top:44px;width:100%;text-align:center;margin:0;font-weight:400;font-size:30px;
-letter-spacing:.9em;text-indent:.9em;color:var(--ink);text-shadow:1px 1px 0 #5a4a3a}
-header p{position:absolute;top:96px;width:100%;text-align:center;margin:0;font-style:italic;color:#fff8ec}
-main{max-width:1060px;margin:0 auto;padding:20px 16px 60px}
-h2{font-size:11px;letter-spacing:.35em;text-transform:uppercase;color:var(--muted);font-weight:400;margin:0 0 12px}
+:root{--top:#1c243a;--bottom:#3a3a2c;--ink:#f5f5f5;--muted:#afb6c4;--faint:#788092;--line:rgba(255,255,255,.09);
+--panel:rgba(255,255,255,.05);--accent:#f5f5f5;--accent2:#ffd678;--blue:#5aa2ff;--track:#464e62;--good:#f5f5f5;
+--bad:#e66e64}
+*{box-sizing:border-box}html{background:var(--bottom)}body{margin:0;min-height:100vh;color:var(--ink);
+background:linear-gradient(var(--top),var(--bottom)) fixed;font:15px/1.55 Bahnschrift,"Segoe UI",system-ui,sans-serif;
+font-weight:350}main{max-width:1060px;margin:0 auto;padding:44px 24px 60px}
+.kicker{display:flex;justify-content:space-between;font-size:13px;letter-spacing:.24em;text-transform:uppercase;
+color:var(--muted);margin-bottom:26px}.kicker span:last-child{color:#787f92}
+h2{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);font-weight:400;margin:0 0 14px}
 .sub{color:var(--muted);margin:4px 0 22px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
-.tile,.card{background:var(--card);border-radius:14px;padding:14px 16px}
-.tile b{display:block;font-size:26px;font-weight:400}.tile span{font-size:10px;letter-spacing:.3em;
-text-transform:uppercase;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
-gap:16px;margin-bottom:16px}svg{width:100%;height:auto;display:block}svg text{fill:var(--muted);font-size:11px}
-table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:right;padding:6px 8px;
-border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:400;font-size:11px}th:first-child,td:first-child{text-align:left}
-td.l{text-align:left;color:var(--muted)}ul{margin:0;padding-left:18px}li{margin:4px 0}.tag{display:inline-block;
-background:var(--ink);color:var(--bg);border-radius:999px;padding:2px 12px;font-size:12px}.scroll{overflow-x:auto}
-.bar{position:relative;height:10px;border-radius:5px;background:var(--line);margin:8px 0 6px}
-.fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--ink)}
-.town{position:absolute;top:-3px;width:2px;height:16px;background:var(--muted);opacity:.5}
-.legend{font-size:11px;color:var(--muted)}.legend i{display:inline-block;width:10px;height:3px;margin:0 5px 3px 10px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 24px;margin-bottom:34px}
+.tile b{display:block;font-size:46px;font-weight:300;line-height:1.1}.tile span{font-size:11px;letter-spacing:.22em;
+text-transform:uppercase;color:var(--muted)}
+.card{background:var(--panel);border-radius:16px;padding:18px 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;margin-bottom:20px}
+svg{width:100%;height:auto;display:block}svg text{fill:#787f92;font-size:11px;font-family:Bahnschrift,sans-serif}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:right;padding:7px 8px;
+border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:400;font-size:11px;letter-spacing:.16em;
+text-transform:uppercase}th:first-child,td:first-child{text-align:left}
+td.l{text-align:left;color:var(--muted)}ul{margin:0;padding-left:18px}li{margin:5px 0}.tag{display:inline-block;
+background:var(--blue);color:#fff;border-radius:999px;padding:3px 14px;font-size:13px;margin-right:6px}
+.scroll{overflow-x:auto}
+.bar{position:relative;height:12px;border-radius:6px;background:var(--track);margin:10px 0 8px}
+.fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--blue)}
+.town{position:absolute;top:-3px;width:2px;height:18px;background:var(--muted);opacity:.35}
+.legend{font-size:11px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.legend i{display:inline-block;width:12px;height:3px;margin:0 6px 3px 12px}
 """
-
-HILLS_SVG = ('<svg viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true">'
-             '<circle cx="690" cy="40" r="26" fill="#fff4d6"/>'
-             '<path d="M0 50 C150 20 260 60 400 38 S700 10 820 40 S960 30 1000 36 V120 H0Z" fill="#6b5a45"/>'
-             '<path d="M0 72 C120 52 300 86 460 62 S760 50 880 70 S980 64 1000 66 V120 H0Z" fill="#4f4a42"/>'
-             '<path d="M0 96 C200 80 360 104 520 90 S820 82 1000 92 V120 H0Z" fill="#2f3538"/></svg>')
 
 
 def _esc(x) -> str:
@@ -66,14 +62,14 @@ def _weekly_svg(coach: Coach, weeks: int = 12) -> str:
     for i, d in enumerate(data):
         bh = d["minutes"] / top * (h - pad - 10)
         x = pad + i * bw + 4
-        colour = "var(--ink)" if coach.goal_met(d) else "var(--line)"
+        colour = "var(--ink)" if coach.goal_met(d) else "var(--track)"
         bars.append(f'<rect x="{x:.1f}" y="{h - pad - bh:.1f}" width="{bw - 8:.1f}" height="{bh:.1f}" rx="3" '
                     f'fill="{colour}"><title>{d["start"]:%d %b}: {d["rides"]} rides, {d["minutes"]:.0f} min</title></rect>')
         if i % 2 == 0:
             bars.append(f'<text x="{x + (bw - 8) / 2:.1f}" y="{h - 10}" text-anchor="middle">{d["start"]:%d %b}</text>')
     return (f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Minutes ridden per week">'
             f'<line x1="{pad}" x2="{w}" y1="{goal_y:.1f}" y2="{goal_y:.1f}" stroke="var(--accent2)" stroke-dasharray="4 4"/>'
-            f'<text x="{w}" y="{goal_y - 4:.1f}" text-anchor="end">goal {coach.weekly_minutes} min</text>'
+            f'<text x="{w}" y="12" text-anchor="end" style="fill:var(--accent2)">goal {coach.weekly_minutes} min</text>'
             + "".join(bars) + "</svg>")
 
 
@@ -103,15 +99,15 @@ def _curve_svg(coach: Coach) -> str:
     grid = "".join(f'<line x1="{pl}" x2="{w}" y1="{ly(v):.1f}" y2="{ly(v):.1f}" stroke="var(--line)"/>'
                    f'<text x="{pl - 6}" y="{ly(v) + 4:.1f}" text-anchor="end">{v}</text>'
                    for v in range(0, int(top), 100 if top > 400 else 50))
-    dots = "".join(f'<circle cx="{lx(d):.1f}" cy="{ly(v):.1f}" r="3" fill="var(--accent)"><title>{duration_label(d)}: '
+    dots = "".join(f'<circle cx="{lx(d):.1f}" cy="{ly(v):.1f}" r="3" fill="var(--accent2)"><title>{duration_label(d)}: '
                    f'{v:.0f} W ({rec[d][1].when:%d %b})</title></circle>' for d, v in best)
     return (f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Best power for each duration">{grid}'
-            f'<path d="{path(best)}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>'
-            + (f'<path d="{path(last30)}" fill="none" stroke="var(--accent2)" stroke-width="2" stroke-dasharray="5 4"/>'
+            f'<path d="{path(best)}" fill="none" stroke="var(--accent2)" stroke-width="2" stroke-dasharray="5 4"/>'
+            + (f'<path d="{path(last30)}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>'
                if len(last30) > 1 else "")
             + dots + ticks + "</svg>"
-            '<div class="legend"><i style="background:var(--accent)"></i>all-time best'
-            '<i style="background:var(--accent2)"></i>last 30 days</div>')
+            '<div class="legend"><i style="background:var(--accent2)"></i>all-time best'
+            '<i style="background:var(--accent)"></i>last 30 days</div>')
 
 
 def _load_svg(coach: Coach) -> str:
@@ -133,9 +129,9 @@ def _load_svg(coach: Coach) -> str:
     labels = "".join(f'<text x="{lx(i):.1f}" y="{h - 6}" text-anchor="middle">{series[i][0]:%d %b}</text>'
                      for i in range(0, len(series), max(1, len(series) // 5)))
     return (f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Fitness, fatigue and form">{zero}'
-            + line(1, "var(--accent)") + line(2, "var(--bad)", 'stroke-dasharray="4 3"') + line(3, "var(--good)")
+            + line(1, "var(--accent)") + line(2, "var(--bad)", 'stroke-dasharray="4 3"') + line(3, "var(--blue)")
             + labels + "</svg><div class='legend'><i style='background:var(--accent)'></i>fitness"
-            "<i style='background:var(--bad)'></i>fatigue<i style='background:var(--good)'></i>form</div>")
+            "<i style='background:var(--bad)'></i>fatigue<i style='background:var(--blue)'></i>form</div>")
 
 
 def render_dashboard(coach: Coach) -> str:
@@ -184,8 +180,8 @@ def render_dashboard(coach: Coach) -> str:
         for r in reversed(coach.rides))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Ride Book</title><style>{CSS}</style></head>
-<body><header>{HILLS_SVG}<h1>RIDE BOOK</h1><p>trainer data only &middot; updated {datetime.now():%a %d %b %Y %H:%M}
-{f"&middot; since {life['since']:%d %b %Y}" if life['since'] else ""}</p></header><main>
+<body><main><div class="kicker"><span>Ride book &middot; updated {datetime.now():%A %d %B %Y %H:%M}
+{f"&middot; since {life['since']:%d %b %Y}" if life['since'] else ""}</span><span>Slow Roads + KICKR</span></div>
 <div class="tiles">{tile_html}</div>
 <div class="card" style="margin-bottom:16px"><h2>Next ride</h2><span class="tag">{_esc(title_of(key, coach))}</span>
 &nbsp;{_esc(why)}{f'<p class="sub">{_esc(plan)}</p>' if plan else ""}</div>

@@ -15,49 +15,41 @@ W, H = 1200, 630
 
 
 def render_card(coach: Coach, ride):
-    from PIL import Image, ImageDraw
+    """1200 x 630, drawn with the shared look (bridge/theme.py) like the ride window."""
+    from . import theme as t
+    from .ridebook import DURATIONS, duration_label
+    from .workouts import title_of
 
-    from .overlay import _font
+    pg = t.Page(W, H)
+    what = title_of(ride.workout, coach) if ride.workout else "free ride"
+    pg.caps(60, 48, f"ride  ·  {ride.when:%A %d %B %Y}  ·  {what}", 14)
+    pg.caps(W - 60, 48, "slow roads + kickr", 14, t.FAINT, anchor="r")
 
-    img = Image.new("RGB", (W, H))
-    d = ImageDraw.Draw(img)
-    for y in range(H):  # quiet dusk gradient, like the game's sky
-        t = y / H
-        d.line([(0, y), (W, y)], fill=(int(28 + 30 * t), int(36 + 22 * t), int(58 - 14 * t)))
-    big, mid, small = _font(64, "Light"), _font(30, "Light"), _font(20, "SemiLight")
-    white, muted, gold = (245, 245, 245), (175, 182, 196), (255, 214, 120)
-
-    def tracked(xy, text, font, fill, tracking=3):
-        x, y = xy
-        for ch in text:
-            d.text((x, y), ch, font=font, fill=fill)
-            x += font.getlength(ch) + tracking
-
-    tracked((60, 50), f"RIDE  ·  {ride.when:%A %d %B %Y}".upper(), small, muted)
-    stats = [(_hms(ride.moving_s), "MOVING"), (f"{ride.miles:.1f}", "MILES"), (f"{ride.avg_w:.0f}", "AVG WATTS"),
-             (f"{ride.work_kj:.0f}", "KJ")]
     x = 60
-    for value, label in stats:
-        d.text((x, 110), value, font=big, fill=white)
-        tracked((x + 2, 190), label, small, muted)
-        x += 270
-    best = "   ".join(f"{label} {ride.curve[s]:.0f} W" for s, label in ((60, "1 min"), (300, "5 min"), (1200, "20 min"))
-                       if s in ride.curve)
-    np_ = f"NP {ride.np_w:.0f} W   " if ride.np_w else ""
-    d.text((60, 270), f"{np_}{best}   cadence {ride.avg_cad:.0f} rpm", font=mid, fill=white)
+    for value, label in ((_hms(ride.moving_s), "moving"), (f"{ride.miles:.1f}", "miles"),
+                         (f"{ride.avg_w:.0f}", "avg watts")):
+        x += pg.stat(x, 92, value, label, 72) + 64
+    x = 60
+    for value, label in ((f"{ride.np_w:.0f}" if ride.np_w else "--", "np watts"), (f"{ride.work_kj:.0f}", "kj"),
+                         (f"{ride.avg_cad:.0f}", "cadence")):
+        x += pg.stat(x, 236, value, label, 40) + 70
+
+    best = {d: w for d, (w, _) in coach.records()["curve"].items()}
+    pg.curve_chart((760, 84, W - 60, 330), ride.curve, best, DURATIONS, duration_label)
+
     recs = coach.new_records(ride)
     if recs:
-        d.text((60, 325), "New: " + "; ".join(recs)[:90], font=mid, fill=gold)
+        pg.wrap(60, 366, "New: " + "; ".join(recs), W - 120, 21, "SemiLight", t.GOLD, 1.35)
+    else:
+        bests = "   ".join(f"{label} {ride.curve[d]:.0f} W" for d, label in
+                           ((60, "1 min"), (300, "5 min"), (1200, "20 min")) if d in ride.curve)
+        pg.text(60, 366, ("best   " + bests) if bests else "", 21, "SemiLight", t.MUTED)
+
     life = sum(r.miles for r in coach.rides if r.start <= ride.start)
-    j = mo.journey(life)
-    d.text((60, 430), f"{j['route']}: {j['on_route']:.0f} of {j['length']} mi", font=mid, fill=white)
-    bar_w = W - 120
-    d.rounded_rectangle((60, 480, 60 + bar_w, 492), radius=6, fill=(70, 78, 98))
-    d.rounded_rectangle((60, 480, 60 + max(12, int(bar_w * j["on_route"] / j["length"])), 492), radius=6,
-                        fill=(90, 162, 255))
-    d.text((60, 505), f"past {j['last']}, next {j['next']}", font=small, fill=muted)
-    tracked((60, H - 50), f"STREAK {coach.streak_weeks()} WK  ·  SLOW ROADS + KICKR", small, muted)
-    return img
+    pg.journey(60, 440, W - 120, mo.journey(life))
+    pg.caps(60, H - 52, f"streak {coach.streak_weeks()} wk  ·  {coach.lifetime()['rides']} rides  ·  "
+                        f"{life:.0f} lifetime miles", 13)
+    return pg.finish()
 
 
 def main(argv=None) -> int:

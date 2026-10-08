@@ -94,8 +94,9 @@ The rest checked out:
   junctions are never followed.
 - **Game auto-start and opening files.** `os.startfile` opens only a fixed `steam://rungameid/3431300` URL
   and files the bridge just wrote in `logs/`. `report.py` starts Explorer with a fixed argument list.
-- **The ride window (`bridge/app.py`, added the same day).** Built on tkinter from the standard library:
-  no web server, no listening port, no browser, no network, and no new package. The ride runs on a worker
+- **The ride window (`bridge/app.py`, added the same day).** Built on tkinter from the standard library, with
+  each screen drawn by Pillow (already installed for the overlay; `bridge/theme.py`): no web server, no
+  listening port, no browser, no network, and no new package. The ride runs on a worker
   thread and the window only reads its status and can ask it to end; drawing errors mid-ride go to a crash
   report and never stop the ride, so the trainer is always handed back. The hidden recorder is started with
   a fixed argument list (the venv's own `pythonw.exe` and `tools/ride_recorder.py`, no shell,

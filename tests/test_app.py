@@ -119,42 +119,69 @@ def app(tmp_path):
         pass
 
 
-def test_start_screen_choices_and_road_toggle(app):
-    assert app.workout is None and app.choice_pills[None].selected
-    app.choose("tempo")
-    assert app.workout == "tempo" and app.choice_pills["tempo"].selected and not app.choice_pills[None].selected
+def screen_text(app) -> str:
+    return " | ".join(app.texts)
+
+
+def keys(app) -> set:
+    return {k for k, _ in app.regions + app.footer_regions}
+
+
+def test_start_screen_choices_and_road_feel(app):
+    assert app.view == "start" and {"begin", "book", "ride:None", "road:None", "road:True", "road:False"} <= keys(app)
+    assert app.workout is None
+    app.click("ride:tempo")
+    assert app.workout == "tempo"
+    app.click("road:True")
+    assert app.gravel is True
+    app.click("road:False")
+    assert app.gravel is False
+    app.click("road:None")
+    assert app.gravel is None
     seen = []
     for _ in range(3):
         app.toggle_road()
         seen.append(app.gravel)
     assert seen == [True, False, None]
+    assert "TODAY" in app.texts and "CHOOSE A RIDE" in app.texts and "Begin" in app.texts
 
 
 def test_status_updates_numbers_and_hides_once_the_game_is_in_front(app, monkeypatch):
     app.coach = app.load_coach()
     app.args.dry_run = False      # a dry run has no game to make room for, so it never hides
     app.show_riding()
+    assert "Waking the trainer\u2026" in app.texts
     hidden = []
     monkeypatch.setattr(app.root, "iconify", lambda: hidden.append(1))
     base = {"conn": "connected", "connected": True, "focused": False, "paused": False, "power": 212,
             "cadence": 88, "ride_s": 75, "miles": 0.5, "units": "mph", "workout": None}
     app.on_status(base)
-    assert app.num["watts"].cget("text") == "212" and app.num["time"].cget("text").endswith("1:15")
+    assert "212" in app.texts and "1:15" in app.texts and "0.50" in app.texts and "88" in app.texts
+    assert "Click into the game" in app.texts
     assert hidden == []
     app.on_status({**base, "focused": True})
     app.on_status({**base, "focused": True})
     assert hidden == [1]                     # minimized once, not every second
-    app.on_status({**base, "focused": True, "workout": {"block": "tempo", "index": 2, "count": 7, "left": 90,
+    app.on_status({**base, "focused": True, "workout": {"block": "Tempo", "index": 2, "count": 7, "left": 90,
                                                          "target": (150, 170)}})
-    assert "150-170 W" in app.workout_label.cget("text")
-    app.on_message("STAND UP & STRETCH · 30 S")
-    assert app.msg_label.cget("text") == "stand up & stretch · 30 s"
+    assert "150\u2013170 W" in app.texts and "1:30 left" in app.texts
+    app.on_message("STAND UP & STRETCH \u00b7 30 S")
+    assert "Stand up & stretch \u00b7 30 s" in screen_text(app)
+    app.riding = True
+    app.click("end")
+    assert app.stop.is_set() and "Finishing\u2026" in app.texts
 
 
-def test_short_ride_result_shows_a_short_screen(app):
+def test_short_and_sim_rides_show_a_short_screen(app):
+    from types import SimpleNamespace
+
     app.riding = True
     app.on_finished({"ride": None, "summary": None, "coach": None, "workout": None})
-    assert app.riding is False and app._on_enter == app.show_start
+    assert app.riding is False and app.view == "message" and "Too short to keep" in app.texts
+    app.on_finished({"ride": None, "summary": SimpleNamespace(moving_s=75), "coach": None, "workout": None})
+    assert "Test ride" in app.texts
+    app.click("back")
+    assert app.view == "start"
 
 
 def test_error_screen_and_ui_errors_never_end_a_ride(app, monkeypatch):
@@ -162,23 +189,51 @@ def test_error_screen_and_ui_errors_never_end_a_ride(app, monkeypatch):
 
     monkeypatch.setattr(cr, "write_report", lambda exc, tool, log_dir=None: None)
     app.on_error(RuntimeError("boom"), None)
+    assert app.view == "message" and "Something went wrong" in app.texts and "boom" in screen_text(app)
+    app.on_error(SystemExit("--trainer 'x' is not a Bluetooth address"), None)
+    assert "Check the ride options" in app.texts
     app.riding = True
     app.on_ui_error(RuntimeError, RuntimeError("draw bug"), None)   # mid-ride: swallowed (crash report only)
     assert app.riding is True
 
 
-def test_feel_row_saves(app, tmp_path):
+def _coach_with_rides():
+    from datetime import datetime
+
+    from bridge.coach import Coach
+    from tests.test_coach import TODAY, ride
+
+    rides = [ride(datetime(2026, 10, d, 8), 30 + d, 120 + d, workout="tempo") for d in range(1, 4)]
+    return Coach(rides, ftp_set=160, today=TODAY), rides
+
+
+def test_summary_feel_and_keys(app, tmp_path):
     from bridge import motivation as mo
 
-    page = app.fresh_body()
-    app.feel_row(page, "20261006-172957")
-    assert all(app.root.bind(str(v)) for v in range(1, 6))    # keys 1-5 pick it too
-    app.pick_feel(4)
-    assert mo.load_book(tmp_path)["feel"]["20261006-172957"] == 4
-    app.pick_feel(2)
-    assert mo.load_book(tmp_path)["feel"]["20261006-172957"] == 2
-    app.show_start()                                          # leaving the summary: 1-5 no longer rate it
-    assert not any(app.root.bind(str(v)) for v in range(1, 6))
+    coach, rides = _coach_with_rides()
+    r = rides[-1]
+    app.show_summary(r, coach, None, "tempo", post_ride=True)
+    assert app.view == "summary" and {"again", "picture", "close", "feel:1", "feel:5"} <= keys(app)
+    assert "HOW DID IT FEEL?" in app.texts and "POWER CURVE" in app.texts and "MINUTES PER WEEK" in app.texts
+    app.act("feel:4")                                         # the 4 key
+    assert mo.load_book(tmp_path)["feel"][r.stamp] == 4
+    app.click("feel:2")
+    assert mo.load_book(tmp_path)["feel"][r.stamp] == 2
+    app.click("again")                                        # leaving the summary: 1-5 no longer rate it
+    assert app.view == "start"
+    app.act("feel:5")
+    assert mo.load_book(tmp_path)["feel"][r.stamp] == 2
+    app.show_summary(r, coach, None, "tempo", post_ride=False)
+    assert app.view == "book" and "feel:1" not in keys(app)  # the ride book doesn't ask
+
+
+def test_long_text_wraps_inside_the_page(app):
+    from bridge import theme
+
+    path = "C:\\Users\\someone\\AppData\\Local\\Temp\\" + "x" * 200 + "\\crash-app-20261006-190000.txt"
+    app.on_error(RuntimeError("could not reach the trainer"), path)
+    for s in app.texts:
+        assert theme.font(15, "SemiLight").getlength(s) / theme.SS <= 960 - 2 * 56 + 1, s[:40]
 
 
 def test_single_instance():
@@ -233,11 +288,11 @@ def test_begin_passes_the_choices_to_the_ride(app, monkeypatch):
     started = []
     monkeypatch.setattr(app, "start_recorder", lambda: None)
     monkeypatch.setattr(app, "_ride", lambda: started.append((app.args.workout, app.args.gravel, app.args.menu)))
-    app.choose("endurance")
-    app.toggle_road()                    # auto -> gravel
-    app.begin()
+    app.click("ride:endurance")
+    app.click("road:True")
+    app.act("enter")                     # Enter = begin
     app.thread.join(2)
-    assert started == [("endurance", True, False)] and app.riding
+    assert started == [("endurance", True, False)] and app.riding and app.view == "riding"
     app.begin()                          # a second click while riding does nothing
     assert len(started) == 1
 
@@ -245,23 +300,9 @@ def test_begin_passes_the_choices_to_the_ride(app, monkeypatch):
 def test_workout_option_preselects(tmp_path):
     a = make_app("--dry-run", "--log-dir", str(tmp_path), "--workout", "cadence")
     try:
-        assert a.workout == "cadence" and a.choice_pills["cadence"].selected
+        assert a.workout == "cadence"
     finally:
         a.root.destroy()
-
-
-def test_titles_always_fit(app):
-    app.root.deiconify()
-    app.root.geometry("760x600")
-    app.root.update()
-    import tkinter.font as tkfont
-
-    for title in ("ride", "ride done", "ride book", "something went wrong with a long title"):
-        app.sky.set(title)
-        items = [i for i in app.sky.find_all() if app.sky.type(i) == "text" and app.sky.itemcget(i, "text")]
-        for i in items:
-            width = tkfont.Font(font=app.sky.itemcget(i, "font")).measure(app.sky.itemcget(i, "text"))
-            assert width <= app.sky.winfo_width() - 60, title
 
 
 def test_bad_option_in_the_ride_thread_shows_a_message_not_a_crash(tmp_path, monkeypatch):
@@ -280,24 +321,32 @@ def test_bad_option_in_the_ride_thread_shows_a_message_not_a_crash(tmp_path, mon
             if kind == "error":
                 a.on_error(*data)
         assert "error" in kinds and a.riding is False
-        assert "not a Bluetooth address" in "".join(
-            w.cget("text") for w in a.body.inner.winfo_children()[0].winfo_children() if hasattr(w, "cget")
-            and w.winfo_class() == "Label")
+        assert "not a Bluetooth address" in screen_text(a)
     finally:
         a.root.destroy()
 
 
 def test_save_picture(app, tmp_path, monkeypatch):
-    pytest.importorskip("PIL")
     import os
 
     opened = []
     monkeypatch.setattr(os, "startfile", lambda p: opened.append(p), raising=False)
-    from bridge.coach import Coach
-    from tests.test_coach import TODAY, ride
+    coach, rides = _coach_with_rides()
+    app.show_summary(rides[-1], coach, None, "tempo", post_ride=True)
+    app.click("picture")
+    assert app.notice.startswith("saved") and list(tmp_path.glob("share-*.png"))
+    assert any(t.startswith("saved") for t in app.texts)
 
-    rides = [ride(__import__("datetime").datetime(2026, 10, d, 8), 30 + d, 120 + d) for d in range(1, 4)]
-    app.coach = Coach(rides, ftp_set=160, today=TODAY)
-    app.saved_label = app.label(app.fresh_body(), "")
-    app.save_picture(rides[-1])
-    assert "saved" in app.saved_label.cget("text") and list(tmp_path.glob("share-*.png"))
+
+def test_window_and_card_share_one_look(app):
+    from bridge import theme
+    from bridge.sharecard import render_card
+
+    coach, rides = _coach_with_rides()
+    app.show_summary(rides[-1], coach, None, "tempo", post_ride=True)
+    assert app._page_img.width() == 960 and app._page_img.height() >= 400
+    card = render_card(coach, rides[-1])
+    assert card.size == (1200, 630)
+    top, bottom = card.getpixel((600, 2)), card.getpixel((600, 627))   # the shared dusk gradient
+    assert all(abs(a - b) <= 6 for a, b in zip(top, theme.TOP))
+    assert all(abs(a - b) <= 8 for a, b in zip(bottom, theme.BOTTOM))
