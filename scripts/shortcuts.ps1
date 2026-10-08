@@ -1,29 +1,28 @@
-# Desktop shortcuts: the Slow Roads Ride window, your ride book and report.bat. Run once (setup.ps1 also runs it):
+# Desktop shortcut for the Slow Roads Ride window (ride, ride book and problem reports in one). Run once
+# (setup.ps1 also runs it):
 #   powershell -ExecutionPolicy Bypass -File scripts\shortcuts.ps1
-# Safe to run again: existing shortcuts with the same names are updated in place.
+# Safe to run again: the shortcut is updated in place, and the older separate Rides and Report shortcuts are
+# removed (the window has tabs for both; report.bat still works if the window can't start).
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $desktop = [Environment]::GetFolderPath("Desktop")   # follows OneDrive-redirected desktops
-$shell = New-Object -ComObject WScript.Shell
 $pythonw = Join-Path $root ".venv\Scripts\pythonw.exe"
-$rideIcon = Join-Path $root "assets\ride.ico"
+if (-not (Test-Path $pythonw)) { Write-Warning "missing $pythonw (run setup.ps1 first)"; exit 1 }
 
-$items = @(
-    @{ Name = "Slow Roads Ride";   Target = $pythonw; Args = "-m bridge.app";        Icon = "$rideIcon,0";
-       Desc = "Ride Slow Roads with the KICKR CORE" },
-    @{ Name = "Slow Roads Rides";  Target = $pythonw; Args = "-m bridge.app --book"; Icon = "$rideIcon,0";
-       Desc = "Your ride book: latest ride, records and charts" },
-    @{ Name = "Slow Roads Report"; Target = (Join-Path $root "report.bat"); Args = "";
-       Icon = (Join-Path $env:SystemRoot "System32\imageres.dll,15"); Desc = "Bundle logs to send to the developer" }
-)
-foreach ($i in $items) {
-    if (-not (Test-Path $i.Target)) { Write-Warning "missing $($i.Target)"; continue }
-    $lnk = $shell.CreateShortcut((Join-Path $desktop ($i.Name + ".lnk")))
-    $lnk.TargetPath = $i.Target
-    $lnk.Arguments = $i.Args
-    $lnk.WorkingDirectory = $root
-    $lnk.IconLocation = $i.Icon
-    $lnk.Description = $i.Desc
-    $lnk.Save()
-    Write-Host "shortcut: $($i.Name) -> $($i.Target) $($i.Args)"
+$shell = New-Object -ComObject WScript.Shell
+$lnk = $shell.CreateShortcut((Join-Path $desktop "Slow Roads Ride.lnk"))
+$lnk.TargetPath = $pythonw
+$lnk.Arguments = "-m bridge.app"
+$lnk.WorkingDirectory = $root
+$lnk.IconLocation = (Join-Path $root "assets\ride.ico") + ",0"
+$lnk.Description = "Ride Slow Roads with the KICKR CORE: ride, ride book and problem reports"
+$lnk.Save()
+Write-Host "shortcut: Slow Roads Ride -> $pythonw -m bridge.app"
+
+foreach ($old in "Slow Roads Rides.lnk", "Slow Roads Report.lnk") {
+    $path = Join-Path $desktop $old
+    if (Test-Path $path) {
+        $target = $shell.CreateShortcut($path).TargetPath
+        if ($target -like "$root*") { Remove-Item $path; Write-Host "removed old shortcut: $old" }
+    }
 }

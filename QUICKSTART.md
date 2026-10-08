@@ -8,8 +8,10 @@ Pedal a Wahoo KICKR CORE and the car in Slow Roads follows. The game steers itse
 2. Double-click **Slow Roads Ride** on your desktop (or `ride.bat` in this folder). The ride window opens
    with your week and today's suggestion. Pick **free ride** or a workout (see
    [Coach](#coach-scoreboard-ride-book-and-workouts)) and the **road feel** (auto follows the game's road),
-   then press **begin** (or Enter). A hidden recorder logs the game side for tuning; it stops on its own.
-   Only one ride window can be open at a time.
+   then press **Begin** (or Enter). A hidden recorder logs the game side for tuning; it stops on its own.
+   Only one ride window can be open at a time. The window has three tabs: **Ride**, **Rides** (your ride
+   book) and **Report** (a zip for bug reports). Every screen fits the window with nothing to scroll;
+   resize it as you like, and it stays sharp at any Windows display scaling.
 3. When the trainer connects (rising beep), the bridge **starts Slow Roads through Steam** if it isn't
    already running (`--no-launch-game` to start it yourself). In the game:
    - Assist **AUTOSTEER**. On the controller, X cycles AUTOSTEER → AUTOSPEED → AUTODRIVE and
@@ -96,7 +98,7 @@ the next ride.
 
 ### Ride book
 
-Double-click **Slow Roads Rides** on the desktop (or `rides.bat`) for your latest ride, records and charts in the ride window. From a terminal:
+The **Rides** tab of the ride window (or `rides.bat`) shows your latest ride, records and charts. From a terminal:
 
 | Command | |
 | --- | --- |
@@ -300,7 +302,7 @@ recordings are how we measure that.
 | `logs/dashboard.html` | Charts page from `python -m bridge.dashboard` and the console version (no scripts, no network) |
 | `logs/share-*.png` | Share cards from `bridge.sharecard` |
 | `logs/crash-*.txt` | Written if something crashes; personal details already removed |
-| `logs/report-*.zip` | Made by `report.bat` to send to the developer |
+| `logs/report-*.zip` | Made by the Report tab (or `report.bat`) to send to the developer |
 | `logs/speed-*.csv` | Recorder: speedometer read from the screen (~5 Hz) |
 | `logs/shots-*/` | Recorder: game-window screenshot every 5 s (only while the game is in front) |
 | `logs/game-*-start/`, `-end/` | Recorder: copy of the game's saved settings (vehicle, units) |
@@ -326,8 +328,8 @@ Run these from this folder in PowerShell.
 | `.venv\Scripts\python -m bridge.gamestate` | The road the game has saved (gravel or tarmac) |
 | `.venv\Scripts\python -m bridge.plan` | Your ride plan, this month's challenge and your journey |
 | `.venv\Scripts\python -m bridge.cleanup --dry-run` | Which old logs the after-ride cleanup would delete (drop `--dry-run` to delete now) |
-| `powershell -ExecutionPolicy Bypass -File scripts\shortcuts.ps1` | Desktop shortcuts: Slow Roads Ride, Slow Roads Rides (ride book) and Slow Roads Report (setup does this too) |
-| `report.bat` | Bundle crash reports, recent logs and the environment check into one zip to send to the developer |
+| `powershell -ExecutionPolicy Bypass -File scripts\shortcuts.ps1` | The Slow Roads Ride desktop shortcut (setup does this too; removes the older separate Rides and Report shortcuts) |
+| `report.bat` | Same as the Report tab, for when the window itself won't start |
 | `.venv\Scripts\python -m bridge.summary` | Ride summary (trainer data only) for the last ride, or pass a `ride-*.csv` |
 | `.venv\Scripts\python -m pytest -q` | Test suite (includes a short fuzz test of the whole bridge) |
 | `.venv\Scripts\python tools\fuzz_bridge.py --minutes 10` | Testing only: long fuzz campaign, random corrupt trainer data through the real bridge (dry run) |
@@ -344,9 +346,10 @@ packages, checks the environment and runs the tests. It is safe to run again.
 
 ## Troubleshooting
 
-**If anything crashes**, the window says so and saves `logs/crash-*.txt`. Double-click **`report.bat`**:
-it bundles the crash reports, recent logs, latest ride and an environment check into
-`logs/report-*.zip` and opens the folder. Bluetooth addresses, your Windows user name, home folder,
+**If anything crashes**, the window says so and saves `logs/crash-*.txt`. Open the **Report** tab and
+press **Make report** (or double-click **`report.bat`** if the window won't start): it bundles the crash
+reports, recent logs, latest ride and an environment check into `logs/report-*.zip`; **Show in folder**
+opens it. Bluetooth addresses, your Windows user name, home folder,
 computer name and e-mail addresses are removed; no screenshots, game settings or `settings.json` go in.
 Attach the zip to a [new issue](https://github.com/jomarpueyo/slowroads-bridge/issues/new?template=bug_report.md).
 

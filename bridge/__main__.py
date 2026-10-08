@@ -26,6 +26,7 @@ from .companion import Companion
 from .ridebook import analyse as analyse_ride
 from .summary import advice, compare_line, format_advice, format_summary, save_summary, summarize_csv
 from .workouts import KEYS as WORKOUT_KEYS, WorkoutRunner, build as build_workout
+from .units import KM_PER_MILE
 from .trainer import GRAVEL_CRR, Texture, TrainerControl, decide as decide_resistance
 from .gamestate import RoadWatcher
 from . import motivation as mo
@@ -157,14 +158,30 @@ def _surface_text(gravel, detected) -> str:
     return "GRAVEL (forced)" if gravel else "tarmac (forced)"
 
 
+def _console() -> bool:
+    return bool(sys.stdin) and sys.stdin.isatty() and sys.platform == "win32"
+
+
+def read_key(timeout_s: float) -> str | None:
+    """One key press from the console, or None after timeout_s (console version only)."""
+    import msvcrt
+
+    end = time.monotonic() + timeout_s
+    while time.monotonic() < end:
+        if msvcrt.kbhit():
+            return msvcrt.getwch()
+        time.sleep(0.05)
+    return None
+
+
 def choose_workout(coach: Coach, timeout_s: float = 20.0, gravel=None, detected=None):
-    """Start menu: Enter or 20 s = free ride, 1 = today's suggestion, 2.. = any workout, G = road surface
+    """Console start menu: Enter or 20 s = free ride, 1 = today's suggestion, 2.. = any workout, G = road surface
     auto -> gravel -> tarmac. Returns (workout key or None, gravel: None = auto, True, False)."""
-    if not sys.stdin or not sys.stdin.isatty():
+    if not _console():
         return None, gravel
     from .workouts import title_of
 
-    key, why = coach.suggest()
+    key = coach.suggest()[0]
     options = [key] + [k for k in WORKOUT_KEYS if k != key]
     print(coach.brief_text() if coach.rides else "first ride: welcome!")
     print("\nRide:  [Enter] free ride")
@@ -172,49 +189,27 @@ def choose_workout(coach: Coach, timeout_s: float = 20.0, gravel=None, detected=
         print(f"       [{i}] {title_of(k, coach)}" + ("   <- suggested" if i == 1 else ""))
     print(f"       [G] road feel: {_surface_text(gravel, detected)} (press to switch)")
     print(f"Choose (free ride in {timeout_s:.0f} s): ", end="", flush=True)
-    try:
-        import msvcrt
-    except ImportError:
-        return None, gravel
-    end = time.monotonic() + timeout_s
-    while time.monotonic() < end:
-        if msvcrt.kbhit():
-            ch = msvcrt.getwch()
-            if ch in ("g", "G"):
-                gravel = True if gravel is None else (False if gravel else None)
-                print(f"\n       road feel: {_surface_text(gravel, detected)}\nChoose: ", end="", flush=True)
-                end = time.monotonic() + timeout_s
-                continue
-            if ch.isdigit() and 1 <= int(ch) <= len(options):
-                print(ch)
-                return options[int(ch) - 1], gravel
-            print("free ride")
-            return None, gravel
-        time.sleep(0.05)
+    while (ch := read_key(timeout_s)) in ("g", "G"):  # G switches the road feel and restarts the countdown
+        gravel = True if gravel is None else (False if gravel else None)
+        print(f"\n       road feel: {_surface_text(gravel, detected)}\nChoose: ", end="", flush=True)
+    if ch and ch.isdigit() and 1 <= int(ch) <= len(options):
+        print(ch)
+        return options[int(ch) - 1], gravel
     print("free ride")
     return None, gravel
 
 
 def ask_feel(log_dir: Path, stamp: str, timeout_s: float = 30.0) -> int | None:
-    """After the ride: 'How did it feel?' 1-5, one key (Enter or 30 s skips). Saved in logs/ridebook.json."""
-    if not sys.stdin or not sys.stdin.isatty():
-        return None
-    try:
-        import msvcrt
-    except ImportError:
+    """Console version, after the ride: 'How did it feel?' 1-5, one key (Enter or 30 s skips)."""
+    if not _console():
         return None
     print("\nHow did it feel?  1 easy  2 comfortable  3 moderate  4 hard  5 very hard  (Enter skips): ",
           end="", flush=True)
-    end = time.monotonic() + timeout_s
-    while time.monotonic() < end:
-        if msvcrt.kbhit():
-            ch = msvcrt.getwch()
-            if ch in "12345":
-                mo.set_feel(log_dir, stamp, int(ch))
-                print(f"{ch} ({mo.FEEL_WORDS[int(ch)]}), saved")
-                return int(ch)
-            break
-        time.sleep(0.05)
+    ch = read_key(timeout_s)
+    if ch and ch in "12345":
+        mo.set_feel(log_dir, stamp, int(ch))
+        print(f"{ch} ({mo.FEEL_WORDS[int(ch)]}), saved")
+        return int(ch)
     print("skipped")
     return None
 
@@ -462,14 +457,12 @@ async def run(args: argparse.Namespace, source_fn=None, hooks=None) -> None:
             mapper.add_sample(bike.power_w, now)
         # Power for the virtual bike. The KICKR sometimes reports 0 W mid-stroke with cadence still
         # high (ride 11:39 t=135 s: 0 W at 82 rpm); reuse the last real reading then.
-        if bike.power_w is not None:
-            if bike.power_w > 0 or (bike.cadence_rpm or 0) < 20:
-                state["drive_w"] = bike.power_w
-        if args.speed_source == "virtual":
-            pass  # stepped at 20 Hz in output_loop
-        elif args.speed_source == "power":
+        if bike.power_w is not None and (bike.power_w > 0 or (bike.cadence_rpm or 0) < 20):
+            state["drive_w"] = bike.power_w
+        # speed source "virtual" is stepped at 20 Hz in output_loop
+        if args.speed_source == "power":
             state["bike_raw"] = bike_speed_from_power(mapper.smoothed, mass_kg=args.rider_kg)
-        elif bike.speed_kmh is not None:
+        elif args.speed_source == "trainer" and bike.speed_kmh is not None:
             state["bike_raw"] = bike.speed_kmh
         state["power"], state["cadence"] = bike.power_w, bike.cadence_rpm
         if ((bike.power_w or 0) >= planner.config.coast_watts
@@ -590,7 +583,7 @@ async def run(args: argparse.Namespace, source_fn=None, hooks=None) -> None:
                 hooks.status({"conn": conn, "connected": state["conn"] == "connected", "focused": focused,
                               "paused": state["paused"], "launched": state["launched"],
                               "power": state["power"], "cadence": state["cadence"], "ride_s": ride_time(now),
-                              "miles": stats.distance_km / 1.609344, "limit": state["limit"],
+                              "miles": stats.distance_km / KM_PER_MILE, "limit": state["limit"],
                               "units": args.units, "workout": state.get("workout_status"),
                               "workout_title": runner.w.title if runner else None})
             await asyncio.sleep(1.0)
@@ -613,7 +606,7 @@ async def run(args: argparse.Namespace, source_fn=None, hooks=None) -> None:
             state["workout_status"] = status
             events += ev
         in_break = bool(state.get("workout_status") and state["workout_status"]["target"] is None)
-        events += companion.update(t_ride, stats.rolling(now), stats.distance_km / 1.609344, in_break)
+        events += companion.update(t_ride, stats.rolling(now), stats.distance_km / KM_PER_MILE, in_break)
         for cue, message in events:
             say(cue, message, 12 if cue == "break" else 8)
 
@@ -712,13 +705,12 @@ async def run(args: argparse.Namespace, source_fn=None, hooks=None) -> None:
                     log.exception("could not save FTP")
         moving_s = 0.0
         result = {"stamp": stamp, "path": ride.path, "workout": workout_key, "summary": None, "ride": None,
-                  "coach": coach, "text": None, "ftp_set": ftp_set, "ramp_ftp": None}
-        if runner is not None and runner.w.ramp and runner.result_ftp:
-            result["ramp_ftp"] = runner.result_ftp
+                  "coach": coach, "text": None, "ftp_set": ftp_set,
+                  "ramp_ftp": runner.result_ftp if runner is not None and runner.w.ramp else None}
         try:  # summary, coach report and scoreboard, from the trainer's data only
             current = summarize_csv(ride.path, args.rider_kg)
             moving_s = current.moving_s
-            this = analyse_ride(ride.path, args.rider_kg)
+            this = analyse_ride(ride.path, args.rider_kg, current)
             board = Coach(coach.rides + ([this] if this else []), ftp_set, coach.weekly_rides, coach.weekly_minutes)
             text = format_summary(current)
             if this is not None:

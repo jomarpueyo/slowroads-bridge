@@ -1,6 +1,7 @@
 """The ride window (bridge/app.py) and the hooks it uses in the ride loop (bridge/__main__.py run())."""
 
 import asyncio
+import time
 import struct
 import sys
 import threading
@@ -99,7 +100,7 @@ def make_app(*argv):
     tk = pytest.importorskip("tkinter")
     from bridge.app import RideApp
 
-    for attempt in range(5):
+    for _ in range(5):
         try:
             return RideApp(bm.parse_args(list(argv)))
         except tk.TclError as e:
@@ -124,11 +125,11 @@ def screen_text(app) -> str:
 
 
 def keys(app) -> set:
-    return {k for k, _ in app.regions + app.footer_regions}
+    return {k for k, _ in app.regions}
 
 
 def test_start_screen_choices_and_road_feel(app):
-    assert app.view == "start" and {"begin", "book", "ride:None", "road:None", "road:True", "road:False"} <= keys(app)
+    assert app.view == "start" and {"begin", "tab:book", "tab:report", "ride:None", "road:None", "road:True", "road:False"} <= keys(app)
     assert app.workout is None
     app.click("ride:tempo")
     assert app.workout == "tempo"
@@ -138,11 +139,6 @@ def test_start_screen_choices_and_road_feel(app):
     assert app.gravel is False
     app.click("road:None")
     assert app.gravel is None
-    seen = []
-    for _ in range(3):
-        app.toggle_road()
-        seen.append(app.gravel)
-    assert seen == [True, False, None]
     assert "TODAY" in app.texts and "CHOOSE A RIDE" in app.texts and "Begin" in app.texts
 
 
@@ -232,8 +228,9 @@ def test_long_text_wraps_inside_the_page(app):
 
     path = "C:\\Users\\someone\\AppData\\Local\\Temp\\" + "x" * 200 + "\\crash-app-20261006-190000.txt"
     app.on_error(RuntimeError("could not reach the trainer"), path)
-    for s in app.texts:
-        assert theme.font(15, "SemiLight").getlength(s) / theme.SS <= 960 - 2 * 56 + 1, s[:40]
+    page = app.render(960, 800)
+    for zone, (x0, _, x1, _) in page.items:
+        assert -0.5 <= x0 and x1 <= 960.5, (zone, x0, x1)
 
 
 def test_single_instance():
@@ -344,9 +341,127 @@ def test_window_and_card_share_one_look(app):
 
     coach, rides = _coach_with_rides()
     app.show_summary(rides[-1], coach, None, "tempo", post_ride=True)
-    assert app._page_img.width() == 960 and app._page_img.height() >= 400
+    assert app.page.finish().size == app.window_px()
     card = render_card(coach, rides[-1])
     assert card.size == (1200, 630)
     top, bottom = card.getpixel((600, 2)), card.getpixel((600, 627))   # the shared dusk gradient
     assert all(abs(a - b) <= 6 for a, b in zip(top, theme.TOP))
     assert all(abs(a - b) <= 8 for a, b in zip(bottom, theme.BOTTOM))
+
+
+# ------------------------------------------------------------------ fits every window, no scrolling
+
+SIZES = [(720, 600), (960, 800), (1600, 700), (760, 1100), (1200, 1000), (1440, 1200), (1100, 620)]
+
+
+def _all_screens(app):
+    coach, rides = _coach_with_rides()
+
+    def riding():
+        app.coach = coach
+        app.workout = "tempo"
+        app.show_riding()
+        app.last_status = {"conn": "connected", "connected": True, "focused": True, "power": 186, "cadence": 88,
+                           "ride_s": 4453, "miles": 14.2, "units": "mph",
+                           "workout": {"block": "Tempo", "index": 3, "count": 8, "left": 214, "target": (155, 170)}}
+        app.msg_text = "STAND UP & STRETCH · 30 S · 15 MIN DONE · DRINK WATER · NEW BEST 5 MIN 212 W " * 2
+
+    return [("start", app.show_start), ("riding", riding),
+            ("summary", lambda: app.show_summary(rides[-1], coach, None, "tempo", post_ride=True, ramp_ftp=180)),
+            ("book", lambda: app.show_summary(rides[-1], coach, None, "tempo", post_ride=False)),
+            ("report", app.show_report),
+            ("error", lambda: app.on_error(RuntimeError("x " * 300), "C:\\" + "y" * 400))]
+
+
+def test_every_screen_fits_and_every_button_hits_at_every_size(app):
+    from bridge.app import DH, DW, FOOT
+
+    for name, show in _all_screens(app):
+        show()
+        for pw, ph in SIZES:
+            page = app.render(pw, ph)
+            assert page.finish().size == (pw, ph)
+            for zone, (x0, y0, x1, y1) in page.items:
+                assert -0.5 <= x0 and x1 <= DW + 0.5 and -0.5 <= y0 and y1 <= DH + 0.5, (name, pw, ph, zone)
+                if zone == "content":
+                    assert y1 <= FOOT + 0.5, (name, pw, ph, (x0, y0, x1, y1))   # nothing runs into the buttons
+            for key, (x0, y0, x1, y1) in page.regions:
+                cx, cy = ((x0 + x1) / 2 + page.ox) * page.scale, (y0 + y1) / 2 * page.scale
+                assert 0 <= cx <= pw and 0 <= cy <= ph and page.hit(cx, cy) == key, (name, pw, ph, key)
+
+
+def test_tall_window_keeps_buttons_at_the_bottom(app):
+    page = app.render(760, 1100)
+    begin = dict(page.regions)["begin"]
+    assert begin[3] * page.scale > 1100 - 40       # the Begin button's bottom is near the window's bottom
+
+
+def test_window_thread_is_dpi_aware_and_the_ride_thread_is_not():
+    if sys.platform != "win32":
+        pytest.skip("Windows DPI awareness")
+    import ctypes
+    import threading
+
+    from bridge.app import dpi_aware_thread
+
+    user32 = ctypes.windll.user32
+    user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    user32.GetAwarenessFromDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+
+    def awareness():
+        return user32.GetAwarenessFromDpiAwarenessContext(user32.GetThreadDpiAwarenessContext())
+
+    seen = {}
+
+    def window_thread():
+        before = awareness()
+        scale = dpi_aware_thread()
+        seen.update(before=before, after=awareness(), scale=scale)
+        seen["other"] = None
+
+        def ride_thread():  # a new thread starts at the process default, like the bridge's
+            seen["other"] = awareness()
+        t = threading.Thread(target=ride_thread)
+        t.start()
+        t.join()
+
+    t = threading.Thread(target=window_thread)
+    t.start()
+    t.join()
+    assert seen["after"] == 2 and seen["scale"] >= 1.0        # per-monitor aware
+    assert seen["other"] == seen["before"]                    # the ride thread keeps the process default
+
+
+def test_tabs_switch_screens_but_not_during_a_ride(app, monkeypatch):
+    app.click("tab:book")
+    assert app.view == "book" and app.tab == "book"
+    app.click("tab:report")
+    assert app.view == "report" and "Make report" in app.texts
+    app.click("tab:ride")
+    assert app.view == "start"
+    monkeypatch.setattr(app, "start_recorder", lambda: None)
+    monkeypatch.setattr(app, "_ride", lambda: None)
+    app.begin()
+    assert app.view == "riding" and not any(k.startswith("tab:") for k in keys(app))
+
+
+def test_report_tab_makes_a_redacted_zip(app, tmp_path, monkeypatch):
+    import zipfile
+
+    from bridge import report
+
+    monkeypatch.setattr(report, "_environment_check", lambda: "checked")
+    (tmp_path / "crash-app-20261006-190000.txt").write_text("boom at AA:BB:CC:DD:EE:FF", encoding="utf-8")
+    app.show_report()
+    assert "1" in app.texts and "CRASH REPORTS" in app.texts
+    app.click("make")
+    for _ in range(100):
+        app.pump()
+        if app.report_state.get("path") or app.report_state.get("error"):
+            break
+        time.sleep(0.05)
+    path = app.report_state["path"]
+    assert "Report saved" in app.texts and {"folder", "issue"} <= keys(app)
+    with zipfile.ZipFile(path) as z:
+        text = z.read("crash-app-20261006-190000.txt").decode()
+    assert "AA:BB:CC:DD:EE:FF" not in text

@@ -6,6 +6,7 @@ Keys are polled with GetAsyncKeyState, not registered: nothing is taken away fro
 programs, and a key only counts when the game window is in front. Turn off with --no-hotkeys.
 """
 
+import ctypes
 import sys
 
 KEYS = {"F6": 0x75, "F7": 0x76, "F8": 0x77, "F9": 0x78, "F10": 0x79}
@@ -14,8 +15,6 @@ HELP = "F6/F7 gear -/+   F8 pause   F9 re-sync limit   F10 overlay"
 
 
 def _async_key_down(vk: int) -> bool:
-    import ctypes
-
     return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
 
 

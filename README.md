@@ -93,10 +93,13 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
 ## Ride
 
 1. Close the Wahoo app and Zwift, and wake the trainer.
-2. Double-click **Slow Roads Ride** on your desktop (or `ride.bat`). One small window opens with your
-   week, today's suggestion, a free ride or a workout, and the road feel. Press **begin** (or Enter). The
-   window, the share card and the charts page share one look: a dusk gradient, light Bahnschrift numbers
-   and small spaced labels, gold for anything new and blue for progress.
+2. Double-click **Slow Roads Ride** on your desktop (or `ride.bat`). One window does everything, with
+   three tabs: **Ride** (your week, today's suggestion, a free ride or a workout, the road feel, then
+   **Begin** or Enter), **Rides** (your latest ride, records and charts) and **Report** (a zip of your
+   logs for a bug report). It fits on one screen with nothing to scroll and scales to any window size and
+   Windows display scaling. The window, the share card and the charts page share one look: a dusk
+   gradient, light Bahnschrift numbers and small spaced labels, gold for anything new and blue for
+   progress.
 3. In Slow Roads: assist **AUTOSTEER**, gearbox **Automatic**, **speed control on in limit mode** (the
    padlock by the speedometer), and keep the game window focused.
 4. Pedal. The bridge starts the game through Steam once the trainer connects, and the window gets out of
@@ -107,8 +110,8 @@ its Bluetooth address in `settings.json`; after that the bridge only connects to
 5. Get off the bike: the ride ends after 3 minutes without pedalling (or press **end ride** in the
    window). The window comes back with your ride: time, miles, power, records, a 1-5 "how did it feel",
    your power curve against your best, minutes per week against your goal, the journey and what to do
-   next ride. The text summary is also saved in `logs/summary-*.txt`. **Slow Roads Rides** on the desktop
-   (or `rides.bat`) opens the same view for your latest ride any time.
+   next ride. The text summary is also saved in `logs/summary-*.txt`. The **Rides** tab shows the same
+   view for your latest ride any time.
 
 ![The ride window after a ride: summary, feel rating, power curve, weekly minutes and next-ride notes](docs/images/ride-window.png)
 
@@ -118,9 +121,10 @@ ghost, a monthly challenge, and a share-card picture of a ride (**save picture**
 
 The console version (status line and keyboard menu) is still there: `ride-console.bat`.
 
-Something broke? Double-click **`report.bat`** and attach the zip to a
-[new issue](https://github.com/jomarpueyo/slowroads-bridge/issues/new?template=bug_report.md). It holds
-the crash report and recent logs with Bluetooth addresses, user/computer names and e-mail removed.
+Something broke? Open the **Report** tab, press **Make report** and attach the zip to a
+[new issue](https://github.com/jomarpueyo/slowroads-bridge/issues/new?template=bug_report.md) (or
+double-click `report.bat` if the window itself won't open). It holds the crash report and recent logs with
+Bluetooth addresses, user/computer names and e-mail removed.
 
 The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …) and troubleshooting are in
 **[QUICKSTART.md](QUICKSTART.md)**.
@@ -129,12 +133,12 @@ The full checklist, every option (`--gear`, `--push-boost`, `--coast-hold`, …)
 
 | Path | What |
 | --- | --- |
-| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `trainer.py` (resistance: ERG and road feel), `gamestate.py` (road type from the game's saved settings), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `mapper.py` (throttle mapping), `pad.py` (virtual controller), `gamewin.py` (finds the game window, safe scroll points), `ridelog.py` (logs), `summary.py` (ride summary and totals), `cues.py` / `hotkeys.py` (beeps, F6-F10), `cleanup.py` (old logs), `overlay.py` (trainer-data overlay), `ridebook.py` / `coach.py` / `workouts.py` / `companion.py` / `dashboard.py` (ride book, scoreboard, workouts, in-ride coach, charts), `app.py` (the ride window), `theme.py` (the shared look: colours, fonts, charts), `motivation.py` / `plan.py` / `sharecard.py` (welcome back, ride plan, journey, ghost, monthly challenge, share card), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
+| `bridge/` | The ride bridge: `ftms.py` (Bluetooth), `trainer.py` (resistance: ERG and road feel), `gamestate.py` (road type from the game's saved settings), `drive.py` (virtual bike, target speed), `limiter.py` (limit mode, coasting, push bonus), `mapper.py` (throttle mapping), `pad.py` (virtual controller), `gamewin.py` (finds the game window, safe scroll points), `ridelog.py` (logs), `summary.py` (ride summary and totals), `cues.py` / `hotkeys.py` (beeps, F6-F10), `cleanup.py` (old logs), `overlay.py` (trainer-data overlay), `ridebook.py` / `coach.py` / `workouts.py` / `companion.py` / `dashboard.py` (ride book, scoreboard, workouts, in-ride coach, charts), `app.py` (the ride window: ride, ride book and reports), `theme.py` (the shared look: colours, fonts, charts, scaling), `units.py` (miles/km, time format), `motivation.py` / `plan.py` / `sharecard.py` (welcome back, ride plan, journey, ghost, monthly challenge, share card), `crashreport.py` + `report.py` (crash reports, report.bat), `sim.py` (scripted test rides) |
 | `tools/` | Checks and testing tools: ride summaries and replays, trainer probes, calibration, and **testing-only** screen-OCR experiments that drive the game (`experiments.py`, `speedo.py`, `debugpanel.py`, `ride_recorder.py`) |
 | `tests/` | pytest suite (`.venv\Scripts\python -m pytest -q`) |
 | `docs/SECURITY.md` | Security review: threat model, findings and what was tested |
 | `docs/STEPPING.md`, `docs/stepping.html` | How the limit steps in six situations; regenerate with `tools/stepping_diagrams.py` |
-| `ride.bat`, `rides.bat`, `ride-console.bat`, `report.bat`, `calibrate.bat`, `scripts/setup.ps1`, `scripts/shortcuts.ps1`, `assets/ride.ico` | Launchers, one-time setup, desktop shortcuts and their icon |
+| `ride.bat`, `rides.bat`, `ride-console.bat`, `report.bat`, `calibrate.bat`, `scripts/setup.ps1`, `scripts/shortcuts.ps1`, `assets/ride.ico` | Launchers (`ride.bat` / `rides.bat` open the window; `ride-console.bat` is the console version; `report.bat` works even if the window can't start), one-time setup, the desktop shortcut and its icon |
 | `settings.example.json` | Example calibration for the older `--mode speed`; the default limit mode needs none |
 
 Each ride writes to `logs/` (git-ignored): trainer packets, 20 Hz controller decisions and, from the

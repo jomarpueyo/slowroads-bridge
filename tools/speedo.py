@@ -99,10 +99,6 @@ class SpeedoReader:
         result = await self._engine.recognize_async(bitmap)
         return " | ".join(line.text for line in result.lines)
 
-    async def read_async(self, img=None) -> SpeedReading:
-        img = img if img is not None else self.grab()
-        return parse_speed(await self._ocr(img))
-
     def read(self, img=None, timeout: float = 2.0) -> SpeedReading:
         """OCR with a timeout. Windows OCR occasionally never completes (ride 11:39: the recorder
         froze 7 s in and stayed frozen for 15 min), so each call runs on a daemon thread; a timed-out

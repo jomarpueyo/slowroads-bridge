@@ -19,8 +19,10 @@ import logging
 import time
 from dataclasses import dataclass
 
+from .units import KM_PER_MILE
+
 log = logging.getLogger("bridge.limiter")
-MPH_KMH = 1.609344
+MPH_KMH = KM_PER_MILE
 STEP = 5          # display units per wheel notch
 MIN_LIMIT = 5
 MAX_LIMIT = 125

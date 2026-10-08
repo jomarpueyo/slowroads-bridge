@@ -11,7 +11,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import motivation as mo
-from .ridebook import KM_PER_MILE, Ride, duration_label, load_rides
+from .ridebook import Ride, duration_label, load_rides
+from .units import hms
 
 # Best power as a multiple of FTP for a typical all-round recreational rider (shape, not level).
 REFERENCE = {5: 3.2, 60: 1.75, 300: 1.18, 1200: 1.05}
@@ -23,10 +24,6 @@ ZONES = ((0.55, "Z1"), (0.75, "Z2"), (0.90, "Z3"), (1.05, "Z4"), (1.20, "Z5"), (
 FTP_RANGE = (40.0, 600.0)
 MILESTONES = (10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000)
 
-
-def _hms(seconds: float) -> str:
-    s = int(round(seconds))
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
 def _hours(seconds: float) -> str:
@@ -102,21 +99,8 @@ class Coach:
 
     def load(self) -> tuple[float, float, float] | None:
         """(fitness CTL, fatigue ATL, form TSB) as of today, or None without an FTP or rides."""
-        ftp = self.ftp()[0]
-        if not ftp or not self.rides:
-            return None
-        daily: dict = {}
-        for r in self.rides:
-            t = self.tss(r, ftp) or 0.0
-            daily[r.when.date()] = daily.get(r.when.date(), 0.0) + t
-        ctl = atl = 0.0
-        day = min(daily)
-        while day <= self.today:
-            t = daily.get(day, 0.0)
-            ctl += (t - ctl) / 42
-            atl += (t - atl) / 7
-            day += timedelta(days=1)
-        return ctl, atl, ctl - atl
+        today = self.load_series(0)
+        return today[-1][1:] if today else None
 
     def load_series(self, days: int = 90) -> list:
         """[(date, fitness, fatigue, form)] for the last `days` days (empty without an FTP)."""
@@ -207,7 +191,7 @@ class Coach:
             if w and old and w > old * 1.01:
                 out.append(f"best {duration_label(d)} power {w:.0f} W (was {old:.0f})")
         if ride.moving_s > rec["longest"].moving_s:
-            out.append(f"longest ride {_hms(ride.moving_s)} (was {_hms(rec['longest'].moving_s)})")
+            out.append(f"longest ride {hms(ride.moving_s)} (was {hms(rec['longest'].moving_s)})")
         if ride.distance_km > rec["farthest"].distance_km:
             out.append(f"farthest ride {ride.miles:.1f} mi (was {rec['farthest'].miles:.1f})")
         return out
@@ -241,7 +225,7 @@ class Coach:
         long_ones = [r for r in self.rides if r.moving_s >= 20 * 60]
         longest = max((r.moving_s for r in self.rides), default=0)
         if self.rides and longest < 45 * 60:
-            out.append(("endurance", f"Endurance: longest ride {_hms(longest)}. Build the long ride by about "
+            out.append(("endurance", f"Endurance: longest ride {hms(longest)}. Build the long ride by about "
                                      "5 min a week, in 15 min blocks with stand-up breaks."))
         fades = [r.second_half_w / r.first_half_w - 1 for r in long_ones[-5:] if r.first_half_w and r.second_half_w]
         if fades and sum(fades) / len(fades) < -0.08:
@@ -354,7 +338,7 @@ class Coach:
         if z:
             total = sum(z.values()) or 1
             lines.append("Zones       " + "  ".join(f"{k} {v * 100 / total:.0f}%" for k, v in z.items() if v))
-        lines.append(f"Efforts     longest steady stretch {_hms(ride.longest_steady_s)}   coasts of 10 s+: {ride.coasts}")
+        lines.append(f"Efforts     longest steady stretch {hms(ride.longest_steady_s)}   coasts of 10 s+: {ride.coasts}")
         before = [r for r in self.rides if r.start < ride.start]
         back = mo.comeback_days(before[-1].when.date() if before else None, ride.when.date())
         if back:
@@ -382,7 +366,7 @@ class Coach:
             f"{w['miles']:.1f} mi   streak {self.streak_weeks()} wk   last ride "
             + ("today" if since == 0 else f"{since} d ago"),
             f"Records     {bests}",
-            f"            longest {_hms(rec['longest'].moving_s)}   farthest {rec['farthest'].miles:.1f} mi   "
+            f"            longest {hms(rec['longest'].moving_s)}   farthest {rec['farthest'].miles:.1f} mi   "
             f"most work {rec['work'].work_kj:.0f} kJ",
         ]
         ftp, source = self.ftp()

@@ -102,7 +102,7 @@ def hold(probe, pad, phase, throttle, brake, seconds):
     while time.monotonic() < end:
         tick = time.monotonic()
         pad.set_controls(throttle, brake)
-        kmh, lim = probe.sample(phase, throttle, brake)
+        kmh, _ = probe.sample(phase, throttle, brake)
         out.append((time.monotonic() - probe.t0, kmh))
         time.sleep(max(0.0, 1 / HZ - (time.monotonic() - tick)))
     return out

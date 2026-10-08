@@ -17,9 +17,6 @@ class VirtualPad:
         self._pad.left_trigger_float(value_float=brake)
         self._pad.update()
 
-    def set_throttle(self, value: float) -> None:
-        self.set_controls(value, 0.0)
-
     def close(self) -> None:
         self._pad.reset()
         self._pad.update()
@@ -35,9 +32,6 @@ class NullPad:
 
     def set_controls(self, throttle: float, brake: float = 0.0) -> None:
         self.throttle, self.brake = throttle, brake
-
-    def set_throttle(self, value: float) -> None:
-        self.set_controls(value, 0.0)
 
     def close(self) -> None:
         self.throttle = self.brake = 0.0

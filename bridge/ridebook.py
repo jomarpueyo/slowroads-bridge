@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from .units import KM_PER_MILE, hms
 from .summary import MIN_RIDE_S, is_simulated, summarize_csv
 
 log = logging.getLogger("bridge.ridebook")
@@ -28,7 +29,6 @@ DURATIONS = (5, 15, 30, 60, 120, 180, 300, 480, 600, 720, 1200, 1800, 2700, 3600
 INDEX_VERSION = 3  # bump when Ride fields or their meaning change: the cache is rebuilt
 INDEX_NAME, BOOK_NAME = "ride-index.json", "ridebook.json"
 COAST_W, COAST_MIN_S = 25.0, 10  # a "stop": at least 10 s under 25 W
-KM_PER_MILE = 1.609344
 
 
 def duration_label(seconds: int) -> str:
@@ -142,12 +142,14 @@ def _workout_of(ride_csv: Path) -> str | None:
     return None
 
 
-def analyse(ride_csv: Path, rider_kg: float = 85.0) -> Ride | None:
+def analyse(ride_csv: Path, rider_kg: float = 85.0, summary=None) -> Ride | None:
+    """The ride book's view of one ride (None for --sim and false starts). Pass the RideSummary if it's
+    already been worked out, so the CSV isn't read twice."""
     stamp = ride_csv.stem.replace("ride-", "", 1)
     when = _stamp_time(stamp)
     if when is None or is_simulated(ride_csv):
         return None
-    r = summarize_csv(ride_csv, rider_kg)
+    r = summary or summarize_csv(ride_csv, rider_kg)
     if r.moving_s < MIN_RIDE_S or not r.series:
         return None
     longest, coasts = _efforts(r.series)
@@ -254,11 +256,6 @@ def set_note(log_dir: Path, stamp: str, note: str) -> None:
     _update_book(log_dir, fn)
 
 
-def _hms(seconds: float) -> str:
-    s = int(round(seconds))
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
-
-
 def format_list(rides: list[Ride]) -> str:
     if not rides:
         return "No rides yet."
@@ -266,7 +263,7 @@ def format_list(rides: list[Ride]) -> str:
     for i, r in enumerate(reversed(rides), 1):
         np_ = f"{r.np_w:.0f}" if r.np_w else "--"
         tag = (r.workout or "") + (f"  {r.note}" if r.note else "") + ("  [hidden]" if r.hidden else "")
-        lines.append(f"{i:3d}  {r.when:%a %d %b %H:%M}  {_hms(r.moving_s):>7}  {r.miles:5.1f}  {r.avg_w:6.0f}  "
+        lines.append(f"{i:3d}  {r.when:%a %d %b %H:%M}  {hms(r.moving_s):>7}  {r.miles:5.1f}  {r.avg_w:6.0f}  "
                      f"{np_:>3}  {r.work_kj:4.0f}  {tag}")
     return "\n".join(lines)
 
@@ -275,10 +272,10 @@ def format_ride(r: Ride) -> str:
     curve = "  ".join(f"{duration_label(d)} {w:.0f}" for d, w in r.curve.items())
     np_ = f"{r.np_w:.0f} W" if r.np_w else "--"
     lines = [f"== Ride {r.when:%A %d %B %Y %H:%M} ({r.stamp}) ==",
-             f"Moving      {_hms(r.moving_s)}   {r.distance_km:.2f} km ({r.miles:.2f} mi)",
+             f"Moving      {hms(r.moving_s)}   {r.distance_km:.2f} km ({r.miles:.2f} mi)",
              f"Power       avg {r.avg_w:.0f} W   NP {np_}   max {r.max_w:.0f} W   work {r.work_kj:.0f} kJ",
              f"Cadence     avg {r.avg_cad:.0f} rpm",
-             f"Efforts     longest steady stretch {_hms(r.longest_steady_s)}   coasts of 10 s+: {r.coasts}",
+             f"Efforts     longest steady stretch {hms(r.longest_steady_s)}   coasts of 10 s+: {r.coasts}",
              f"Power curve {curve}"]
     if r.workout:
         lines.append(f"Workout     {r.workout}")
@@ -311,15 +308,9 @@ def main(argv=None) -> int:
         print(Coach.from_settings(LOG_DIR).scoreboard_text())
         return 0
     if cmd == "dashboard":
-        from .dashboard import write_dashboard
+        from .dashboard import main as dashboard
 
-        out = write_dashboard(LOG_DIR)
-        print(f"dashboard: {out}")
-        if "--no-open" not in argv and sys.platform == "win32":
-            import os
-
-            os.startfile(str(out))
-        return 0
+        return dashboard(argv[1:])
     rides = load_rides(LOG_DIR, rider_kg, include_hidden=True)
     if cmd == "list":
         print(format_list(rides))

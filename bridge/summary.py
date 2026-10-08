@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .units import KM_PER_MILE, hms
+
 MAX_GAP_S = 5.0
 MAX_RIDE_S = 7 * 24 * 3600  # t_s is seconds since the bridge started; anything beyond a week is corrupt
 LIMITS = {"power": (0, 3000), "cadence": (0, 250), "speed": (0, 120)}  # drop impossible readings
@@ -160,9 +162,13 @@ def summarize_rows(rows, rider_kg: float = 85.0) -> RideSummary:
             r.first_half_w = sum(series[:half]) / half
             r.second_half_w = sum(series[half:]) / (len(series) - half)
         r.low_power_share = sum(1 for p in series if p < 25) / len(series)
-        if len(series) >= 30:
-            rolled = [sum(series[i - 30:i]) / 30 for i in range(30, len(series) + 1)]
-            r.normalized_power_w = (sum(x ** 4 for x in rolled) / len(rolled)) ** 0.25
+        if len(series) >= 30:  # NP: 4th-power mean of the 30 s rolling average (running sum)
+            s30, total = sum(series[:30]), 0.0
+            for i in range(30, len(series)):
+                total += (s30 / 30) ** 4
+                s30 += series[i] - series[i - 30]
+            total += (s30 / 30) ** 4
+            r.normalized_power_w = (total / (len(series) - 29)) ** 0.25
         for label, window in (("5 s", 5), ("1 min", 60), ("5 min", 300), ("20 min", 1200)):
             best = _rolling_best(series, window)
             if best is not None:
@@ -175,11 +181,6 @@ def summarize_csv(path: Path, rider_kg: float = 85.0) -> RideSummary:
         return summarize_rows(csv.DictReader(f), rider_kg)
 
 
-def _hms(seconds: float) -> str:
-    s = int(round(seconds))
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
-
-
 def format_summary(r: RideSummary, title: str = "Ride summary") -> str:
     if r.packets == 0 or r.duration_s <= 0:
         return f"{title}: no trainer data recorded."
@@ -187,8 +188,8 @@ def format_summary(r: RideSummary, title: str = "Ride summary") -> str:
     np_ = f"{r.normalized_power_w:.0f} W" if r.normalized_power_w else "(needs 30 s)"
     lines = [
         f"== {title} (trainer data only) ==",
-        f"Time        {_hms(r.duration_s)} total, {_hms(r.moving_s)} moving",
-        f"Distance    {r.virtual_km:.2f} km ({r.virtual_km / 1.609344:.2f} mi)   avg {r.virtual_avg_kmh:.1f} km/h   "
+        f"Time        {hms(r.duration_s)} total, {hms(r.moving_s)} moving",
+        f"Distance    {r.virtual_km:.2f} km ({r.virtual_km / KM_PER_MILE:.2f} mi)   avg {r.virtual_avg_kmh:.1f} km/h   "
         f"max {r.virtual_max_kmh:.1f} km/h",
         f"            virtual road bike, Zwift-like; KICKR wheel speed reads {r.distance_km:.2f} km",
         f"Power       avg {r.avg_power_w:.0f} W   max {r.max_power_w:.0f} W   normalized {np_}",
@@ -238,11 +239,11 @@ def advice(r: RideSummary, previous: list | None = None, ftp: float = 0.0, worko
     if prev:
         longest = max(p.moving_s for p in prev)
         if r.moving_s > longest:
-            tips.append(f"Longest ride so far ({_hms(r.moving_s)} moving).")
+            tips.append(f"Longest ride so far ({hms(r.moving_s)} moving).")
         tips = tips[:4]
         target_min = int(round(r.moving_s / 300) * 5 + 5)  # 34:53 -> 40 min
         tips.append(f"Next ride idea: {target_min} min at about {r.avg_power_w * 1.05:.0f} W average "
-                    f"(this ride: {_hms(r.moving_s)} at {r.avg_power_w:.0f} W).")
+                    f"(this ride: {hms(r.moving_s)} at {r.avg_power_w:.0f} W).")
     if not ftp:
         tips.append("Set your FTP (--ftp, or \"ftp\" in settings.json) for zone-based feedback on the overlay.")
     return tips[:6]
@@ -261,19 +262,6 @@ def save_summary(ride_csv: Path, text: str) -> Path | None:
         return out
     except OSError:
         return None
-
-
-def write_summary(ride_csv: Path, rider_kg: float = 85.0, previous: list | None = None,
-                  ftp: float = 0.0) -> tuple[str, Path | None]:
-    """Summarize a ride CSV (with suggestions for next time) and save it as summary-<stamp>.txt."""
-    r = summarize_csv(ride_csv, rider_kg)
-    text = format_summary(r) + format_advice(advice(r, previous, ftp))
-    out = ride_csv.with_name(ride_csv.name.replace("ride-", "summary-", 1)).with_suffix(".txt")
-    try:
-        out.write_text(text + "\n", encoding="utf-8")
-    except OSError:
-        out = None
-    return text, out
 
 
 MIN_RIDE_S = 60  # shorter rides (tests, false starts) don't count in totals
@@ -330,24 +318,18 @@ def format_totals(history: list, title: str) -> str:
         for k, v in r.best.items():
             best[k] = max(best.get(k, 0.0), v)
     lines = [f"== {title} (trainer data only) ==",
-             f"Rides       {len(history)}   {_hms(moving)} moving   {dist:.1f} km",
+             f"Rides       {len(history)}   {hms(moving)} moving   {dist:.1f} km",
              f"Work        {work:.0f} kJ (~{work:.0f} kcal)   avg power {work * 1000 / moving:.0f} W" if moving else
              f"Work        {work:.0f} kJ",
              "Best        " + ("  ".join(f"{k} {v:.0f} W" for k, v in best.items()) or "-"),
              ""]
     for stamp, r, _ in history[-10:]:
         np_ = f"{r.normalized_power_w:.0f}" if r.normalized_power_w else "--"
-        lines.append(f"  {stamp:%a %d %b %H:%M}  {_hms(r.moving_s):>7}  {r.virtual_km or r.distance_km:5.1f} km  "
+        lines.append(f"  {stamp:%a %d %b %H:%M}  {hms(r.moving_s):>7}  {r.virtual_km or r.distance_km:5.1f} km  "
                      f"{r.avg_power_w:4.0f} W avg  NP {np_:>3}  {r.work_kj:4.0f} kJ")
     if len(history) > 10:
         lines.append(f"  (and {len(history) - 10} earlier)")
     return "\n".join(lines)
-
-
-def estimate_ftp(history: list) -> float | None:
-    """95% of the best 20 minutes across rides (a standard 20-minute-test estimate), or None."""
-    best20 = max((r.best.get("20 min", 0.0) for _, r, _ in history), default=0.0)
-    return round(best20 * 0.95) if best20 > 0 else None
 
 
 def compare_line(current: RideSummary, previous: RideSummary) -> str:

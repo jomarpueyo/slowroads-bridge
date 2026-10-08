@@ -5,7 +5,7 @@ import csv
 import struct
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -213,7 +213,7 @@ def test_runner_blocks_targets_and_events():
 def test_ramp_test_ends_on_failure_and_gives_ftp():
     w = build("ramp", 160)
     r = WorkoutRunner(w, 160)
-    t, best = 0, 0
+    t = 0
     while not r.done and t < w.seconds:
         _, b, _ = r._block_at(t)
         target = b.watts if b and b.watts else 100

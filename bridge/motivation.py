@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+from .units import KM_PER_MILE
+
 COMEBACK_DAYS = 4
 DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 FEEL_WORDS = {1: "easy", 2: "comfortable", 3: "moderate", 4: "hard", 5: "very hard"}
@@ -203,7 +205,7 @@ def distance_timeline(series: list, rider_kg: float = 85.0) -> list:
     bike.substep = 0.25
     out, miles = [], 0.0
     for w in series:
-        miles += bike.step(w, 1.0) / 3600 / 1.609344
+        miles += bike.step(w, 1.0) / 3600 / KM_PER_MILE
         out.append(miles)
     return out
 

@@ -7,7 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bridge.drive import DriveConfig, SpeedController  # noqa: E402
-from bridge.ftms import MalformedPacket, parse_indoor_bike_data, parse_power  # noqa: E402
+from bridge.ftms import MalformedPacket, parse_indoor_bike_data  # noqa: E402
 from bridge.mapper import MapperConfig, ThrottleMapper  # noqa: E402
 from bridge.ridelog import RideLog  # noqa: E402
 
@@ -20,7 +20,7 @@ def test_synthetic_vector():
     assert bike.power_w == 200
     assert bike.speed_kmh == pytest.approx(20.0)
     assert bike.cadence_rpm == pytest.approx(90.0)
-    assert parse_power(VECTOR) == 200
+    assert parse_indoor_bike_data(VECTOR).power_w == 200
 
 
 def test_speed_absent_when_bit0_set():
@@ -37,11 +37,11 @@ def test_all_fields_before_power():
 
 
 def test_negative_power_is_signed():
-    assert parse_power(bytes.fromhex("41 00 F6 FF")) == -10
+    assert parse_indoor_bike_data(bytes.fromhex("41 00 F6 FF")).power_w == -10
 
 
 def test_no_power_flag():
-    assert parse_power(bytes.fromhex("04 00 D0 07 B4 00")) is None
+    assert parse_indoor_bike_data(bytes.fromhex("04 00 D0 07 B4 00")).power_w is None
 
 
 def test_truncated_packet_raises():

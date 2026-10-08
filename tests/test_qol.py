@@ -2,11 +2,10 @@
 
 import asyncio
 import csv
-import os
 import struct
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pytest

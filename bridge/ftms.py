@@ -67,10 +67,6 @@ def parse_indoor_bike_data(data: bytes) -> BikeData:
     return BikeData(flags, speed, cadence, power, bytes(data))
 
 
-def parse_power(data: bytes) -> int | None:
-    return parse_indoor_bike_data(data).power_w
-
-
 def trainer_filter(address: str | None = None, name_hint: str | None = None):
     """Which advertising devices count as our trainer (docs/SECURITY.md finding 1).
 

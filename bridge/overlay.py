@@ -13,11 +13,11 @@ import logging
 import threading
 import time
 from collections import deque
-from pathlib import Path
+
+from .units import KM_PER_MILE, hms
 
 log = logging.getLogger("bridge.overlay")
 
-KM_PER_MILE = 1.609344
 # Coggan power zones as fractions of FTP: (upper bound, name, accent colour)
 ZONES = ((0.55, "Z1", (170, 170, 170)), (0.75, "Z2", (90, 160, 255)), (0.90, "Z3", (90, 210, 120)),
          (1.05, "Z4", (250, 210, 70)), (1.20, "Z5", (255, 150, 60)), (1.50, "Z6", (255, 85, 85)),
@@ -93,24 +93,10 @@ class LiveStats:
 
 # ---------------------------------------------------------------- drawing (Pillow)
 
-FONT_DIR = Path(r"C:\Windows\Fonts")
-
-
 def _font(size: int, weight: str):
-    from PIL import ImageFont
+    from .theme import font  # Pillow is imported only when the overlay draws (it turns itself off without it)
 
-    for name, variation in (("bahnschrift.ttf", weight), ("segoeuil.ttf" if weight == "Light" else "segoeui.ttf", None)):
-        try:
-            f = ImageFont.truetype(str(FONT_DIR / name), size)
-            if variation:
-                try:
-                    f.set_variation_by_name(variation)
-                except Exception:
-                    pass
-            return f
-        except OSError:
-            continue
-    return ImageFont.load_default()
+    return font(size, weight)
 
 
 _fonts: dict = {}
@@ -123,11 +109,6 @@ def fonts(scale: float) -> dict:
         _fonts[key] = {"big": _font(s(30), "Light"), "mid": _font(s(20), "Light"),
                        "label": _font(s(10), "SemiLight")}
     return _fonts[key]
-
-
-def _fmt_time(seconds: float) -> str:
-    s = int(seconds)
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
 def _tracked_width(text: str, font, tracking: float) -> int:
@@ -226,7 +207,7 @@ def render(snap: dict, scale: float = 1.0):
     power = snap["power"]
     # Cells are (value, label, colour, key): `key` picks the brightness from snap["alpha"] (Attention), and
     # keys in snap["hot"] are drawn in the highlight colour (a mile done, a surge, a high cadence).
-    top = [(_fmt_time(snap["elapsed"]), "TIME", white, "time"),
+    top = [(hms(snap["elapsed"]), "TIME", white, "time"),
            (f"{snap['distance']:.2f}", snap["dist_label"], white, "distance"),
            ("--" if power is None else f"{power:.0f}", "WATTS", white, "power"),
            ("--" if snap["cadence"] is None else f"{snap['cadence']:.0f}", "RPM", white, "cadence")]
@@ -264,7 +245,7 @@ def render(snap: dict, scale: float = 1.0):
     if wk:
         state_c = {"ok": (130, 225, 140, 240), "low": (255, 195, 90, 240), "high": (255, 150, 110, 240)}
         work.append((f"{wk['index']}/{wk['count']}", wk["block"].upper()[:18], white, None))
-        work.append((_fmt_time(wk["left"]), "LEFT", white, None))
+        work.append((hms(wk["left"]), "LEFT", white, None))
         if wk["target"]:
             lo, hi = wk["target"]
             label = "ERG W" if wk.get("erg") else "TARGET W"  # ERG: the trainer holds it for you
@@ -484,6 +465,7 @@ class Overlay:
         msg = wintypes.MSG()
         shown = False
         next_draw = 0.0
+        game, drawn = None, None
         try:
             while not self._stop.is_set():
                 while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):  # PM_REMOVE
@@ -492,8 +474,9 @@ class Overlay:
                 now = time.monotonic()
                 if now >= next_draw:
                     next_draw = now + 1.0 / self.fps
-                    game = win.find_game_window() if self.visible else None
-                    show = bool(game) and win.game_focused() and not user32.IsIconic(game)
+                    if not (game and user32.IsWindow(game)):  # look the game up again only once it's gone
+                        game = win.find_game_window()
+                    show = self.visible and bool(game) and win.game_focused() and not user32.IsIconic(game)
                     if show:
                         rc = wintypes.RECT()
                         user32.GetClientRect(game, ctypes.byref(rc))
@@ -501,9 +484,14 @@ class Overlay:
                         user32.ClientToScreen(game, ctypes.byref(origin))
                         gw, gh = rc.right - rc.left, rc.bottom - rc.top
                         scale = max(0.6, min(2.5, gh / 1080))
-                        img = render(self.snapshot_fn(), scale)
-                        margin = int(22 * scale)
-                        blit(img, origin.x + gw - img.size[0] - margin, origin.y + margin)
+                        snap = self.snapshot_fn()
+                        shown_snap = {**snap, "elapsed": int(snap.get("elapsed") or 0)}  # whole seconds shown
+                        key = (repr(shown_snap), scale, origin.x, origin.y, gw)
+                        if key != drawn:  # the numbers change once a second: skip identical frames
+                            img = render(snap, scale)
+                            margin = int(22 * scale)
+                            blit(img, origin.x + gw - img.size[0] - margin, origin.y + margin)
+                            drawn = key
                         if not shown:
                             user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
                             shown = True

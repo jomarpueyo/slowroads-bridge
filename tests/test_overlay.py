@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from bridge.overlay import LiveStats, Overlay, render, zone  # noqa: E402
-from bridge.summary import estimate_ftp, summarize_rows  # noqa: E402
+from bridge.summary import summarize_rows  # noqa: E402
 
 
 def test_rolling_averages_and_full_windows():
@@ -56,13 +56,12 @@ def test_no_zone_without_ftp_or_power():
     assert zone(200, 0) is None and zone(None, 200) is None
 
 
-def test_ftp_estimate_is_95_percent_of_best_20_min():
+def test_best_20_min_feeds_the_ftp_estimate():
     ride = summarize_rows([{"t_s": str(i), "power_w": "200" if i < 1300 else "100", "error": ""}
                            for i in range(1500)])
     assert ride.best["20 min"] == pytest.approx(200)
-    assert estimate_ftp([(None, ride, None)]) == 190
     short = summarize_rows([{"t_s": str(i), "power_w": "300", "error": ""} for i in range(600)])
-    assert estimate_ftp([(None, short, None)]) is None
+    assert "20 min" not in short.best
 
 
 @pytest.mark.parametrize("paused,ftp,power", [(False, 200, 186), (True, 95, None), (False, 0, 50)])

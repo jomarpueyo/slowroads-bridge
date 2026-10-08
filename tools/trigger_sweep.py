@@ -34,7 +34,7 @@ def main() -> None:
         steps = int(args.seconds * 20)
         for n in range(steps + 1):
             value = n / steps
-            pad.set_throttle(value)
+            pad.set_controls(value)
             if n % 20 == 0:
                 log.info("trigger %.2f", value)
             time.sleep(0.05)

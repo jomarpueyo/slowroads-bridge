@@ -103,7 +103,11 @@ The rest checked out:
   `CREATE_NO_WINDOW`), and only for real rides. A named mutex allows one window at a time, so two bridges
   can't fight over the trainer and the game. Closing the window mid-ride asks first and ends the ride
   through the same path as the auto-end; the process waits up to 10 s for the trainer to be released. The
-  desktop shortcuts point at the venv's `pythonw.exe` with fixed arguments; the icon is a file in the repo.
+  Report tab builds the same redacted zip as `report.bat` on a background thread; **Show in folder** starts
+  Explorer with a fixed argument list and **Open a GitHub issue** opens the fixed issues URL. Only the
+  window's own thread is made DPI aware (`SetThreadDpiAwarenessContext`); the ride thread keeps the process
+  default, so the game-window and mouse-wheel code sees the same coordinates as before. The one desktop
+  shortcut points at the venv's `pythonw.exe` with fixed arguments; the icon is a file in the repo.
 - **Dependencies and CI.** No new packages and no changes to the lock files or the workflow since the
   first review. `pip-audit` was not re-run this time.
-- **Suite:** 221 tests pass.
+- **Suite:** 244 tests pass (2026-10-07, after the ride window and a full code review).

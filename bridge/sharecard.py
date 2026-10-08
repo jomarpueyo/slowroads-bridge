@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 
 from . import motivation as mo
-from .coach import Coach, _hms
+from .coach import Coach
+from .units import hms
 
 W, H = 1200, 630
 
@@ -26,7 +27,7 @@ def render_card(coach: Coach, ride):
     pg.caps(W - 60, 48, "slow roads + kickr", 14, t.FAINT, anchor="r")
 
     x = 60
-    for value, label in ((_hms(ride.moving_s), "moving"), (f"{ride.miles:.1f}", "miles"),
+    for value, label in ((hms(ride.moving_s), "moving"), (f"{ride.miles:.1f}", "miles"),
                          (f"{ride.avg_w:.0f}", "avg watts")):
         x += pg.stat(x, 92, value, label, 72) + 64
     x = 60

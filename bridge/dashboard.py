@@ -13,8 +13,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import motivation as mo
-from .coach import Coach, _hms
+from .coach import Coach
 from .ridebook import DURATIONS, duration_label
+from .units import hms
 
 # Same look as the ride window and the share card (bridge/theme.py): dusk gradient, Bahnschrift, spaced labels.
 CSS = """
@@ -149,7 +150,7 @@ def render_dashboard(coach: Coach) -> str:
                        f"<td class='l'>{curve[d][1].when:%d %b %Y}</td></tr>"
                        for d in (5, 15, 30, 60, 120, 300, 600, 1200, 1800, 3600) if d in curve)
     if rec["longest"]:
-        rec_rows += (f"<tr><td>longest ride</td><td>{_hms(rec['longest'].moving_s)}</td>"
+        rec_rows += (f"<tr><td>longest ride</td><td>{hms(rec['longest'].moving_s)}</td>"
                      f"<td class='l'>{rec['longest'].when:%d %b %Y}</td></tr>"
                      f"<tr><td>farthest ride</td><td>{rec['farthest'].miles:.1f} mi</td>"
                      f"<td class='l'>{rec['farthest'].when:%d %b %Y}</td></tr>")
@@ -173,9 +174,9 @@ def render_dashboard(coach: Coach) -> str:
              f'<p class="sub">{_esc(coach.challenge_text())}'
              + ("" if ch["set"] else " (set your own: python -m bridge.plan challenge rides 12)") + "</p>")
     rows = "".join(
-        f"<tr><td>{r.when:%a %d %b %H:%M}</td><td>{_hms(r.moving_s)}</td><td>{r.miles:.1f}</td><td>{r.avg_w:.0f}</td>"
+        f"<tr><td>{r.when:%a %d %b %H:%M}</td><td>{hms(r.moving_s)}</td><td>{r.miles:.1f}</td><td>{r.avg_w:.0f}</td>"
         f"<td>{(f'{r.np_w:.0f}' if r.np_w else '--')}</td><td>{r.work_kj:.0f}</td><td>{r.avg_cad:.0f}</td>"
-        f"<td>{_hms(r.longest_steady_s)}</td><td>{_esc(mo.FEEL_WORDS.get(felt.get(r.stamp), ''))}</td>"
+        f"<td>{hms(r.longest_steady_s)}</td><td>{_esc(mo.FEEL_WORDS.get(felt.get(r.stamp), ''))}</td>"
         f"<td class='l'>{_esc(r.workout or '')} {_esc(r.note)}</td></tr>"
         for r in reversed(coach.rides))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">

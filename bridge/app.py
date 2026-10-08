@@ -1,16 +1,18 @@
-"""The ride window: one small app for the whole ride, in the same look as the share card (bridge/theme.py).
+"""Slow Roads Ride: one window for riding, your ride book and problem reports, in the share card's look.
 
-  pythonw -m bridge.app [--book] [any ride option, e.g. --gear 2.5]      (the desktop shortcut runs this)
+  pythonw -m bridge.app [--book | --report] [any ride option, e.g. --gear 2.5]   (the desktop shortcut runs this)
 
-Start: pick a free ride or a workout and the road feel, then "begin". The window minimizes itself once the game
-is in front, shows live numbers if you look at it, and comes back when the ride ends with the summary, the
-"how did it feel?" rating, the charts and the coach's notes. --book opens straight to the ride book (latest
-ride and charts).
+Tabs at the top: RIDE (pick a free ride or a workout and the road feel, then begin), RIDES (your latest ride,
+records and charts) and REPORT (bundle logs for the developer, personal details removed). During a ride the
+window minimizes itself once the game is in front and comes back when the ride ends with the summary, the
+"how did it feel?" rating, the charts and the coach's notes.
 
-Lightweight on purpose: every screen is one Pillow image (drawn by bridge/theme.py, like the share card) shown in
-a plain tkinter window, which only handles clicks, keys and scrolling. No web server, no browser, no network. The
-ride itself is the same bridge as `python -m bridge` (bridge/__main__.py run()) on a worker thread; this window
-reads its status once a second and can ask it to end. The tuning recorder (tools/ride_recorder.py) runs hidden.
+Every screen is one image drawn by bridge/theme.py in a fixed 960 x 800 design frame and scaled to the window,
+so nothing ever scrolls and it looks the same at any window size and any Windows display scaling (the window's
+thread is per-monitor DPI aware; the ride thread keeps the process default, so the game-window and mouse-wheel
+code sees the same coordinates as always). Lightweight on purpose: tkinter + Pillow, no web server, no browser,
+no network. The ride is the same bridge as `python -m bridge` (bridge/__main__.py run()) on a worker thread; the
+window reads its status once a second and can ask it to end. The tuning recorder runs hidden.
 """
 
 import ctypes
@@ -24,18 +26,34 @@ from pathlib import Path
 
 from . import motivation as mo
 from .coach import Coach
+from .units import KM_PER_MILE, hms
 from .ridelog import ACTIVE_RIDE
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_ID = "slowroads-bridge.ride"
 MUTEX_NAME = "Local\\slowroads-bridge-ride"
-W = 960            # window width (the height can be changed; long pages scroll)
-M = 56             # side margin
-FOOTER_H = 92
+DW, DH = 960, 800          # the design frame every screen is laid out in
+FOOT = 708                 # buttons live in the band from here to DH
+M = 56                     # side margin
+MIN_SCALE = 0.75           # smallest the frame may be drawn (text stays readable)
+TABS = (("ride", "Ride"), ("book", "Rides"), ("report", "Report"))
+
+
+def dpi_aware_thread() -> float:
+    """Make the calling (window) thread per-monitor DPI aware; returns the display scale (1.0 = 100%)."""
+    if sys.platform != "win32":
+        return 1.0
+    user32 = ctypes.windll.user32
+    try:
+        user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+        user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
+        return user32.GetDpiForSystem() / 96.0
+    except (AttributeError, OSError):
+        return 1.0
 
 
 class RideApp:
-    def __init__(self, args, book: bool = False):
+    def __init__(self, args, book: bool = False, report: bool = False):
         from PIL import ImageTk  # noqa: F401  (fail early, before a window, if Pillow is missing)
 
         from . import theme
@@ -55,22 +73,28 @@ class RideApp:
         self.coach = None
         self.detected_road = None
         self.view = None            # name of the screen on show
-        self.draw_fn = None         # (page) -> content height; redrawn on changes
-        self.footer_fn = None       # (page) -> None
+        self.tab = None             # which tab is lit ("ride", "book", "report"), None during a ride
+        self.draw_fn = None         # (page) -> None: content above FOOT
+        self.footer_fn = None       # (page) -> None: buttons in the band below FOOT
         self.actions: dict = {}     # region key -> callable
-        self.regions: list = []     # (key, box) on the page, in page pixels
-        self.footer_regions: list = []
-        self.notice = ""            # one line in the footer (e.g. "saved ...")
+        self.regions: list = []     # (key, box) in design coordinates
         self.texts: list = []       # what the screen says (for tests)
+        self.page = None            # the last drawn page (scale, offsets)
+        self.notice = ""            # one line under the buttons (e.g. "saved ...")
         self.feel_value = None
         self.pick_feel = lambda v: None
+        self.report_state: dict = {}
 
+        self.dpi = dpi_aware_thread()
         self.root = tk.Tk()
         self.root.title("Slow Roads Ride")
         self.root.configure(bg="#%02x%02x%02x" % theme.TOP)
-        self.root.geometry(f"{W}x820")
-        self.root.minsize(W, 560)
-        self.root.resizable(False, True)
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        fit = min(self.dpi, 0.92 * sw / DW, 0.85 * sh / DH)  # 100% of the design at this DPI, if the screen allows
+        self.req_size = (round(DW * fit), round(DH * fit))
+        self.root.geometry("%dx%d" % self.req_size)
+        lo = min(MIN_SCALE * self.dpi, fit)
+        self.root.minsize(round(DW * lo), round(DH * lo))
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.report_callback_exception = self.on_ui_error
         ico = ROOT / "assets" / "ride.ico"
@@ -79,107 +103,114 @@ class RideApp:
                 self.root.iconbitmap(default=str(ico))
             except tk.TclError:
                 pass
-        bottom = "#%02x%02x%02x" % theme.BOTTOM
-        self.footer = tk.Canvas(self.root, width=W, height=FOOTER_H, bg=bottom, highlightthickness=0, bd=0)
-        self.footer.pack(side="bottom", fill="x")
-        self.canvas = tk.Canvas(self.root, width=W, bg=self.root["bg"], highlightthickness=0, bd=0)
+        self.canvas = tk.Canvas(self.root, bg=self.root["bg"], highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
-        for c, which in ((self.canvas, "page"), (self.footer, "footer")):
-            c.bind("<ButtonRelease-1>", lambda e, w=which: self.on_click(w, e))
-            c.bind("<Motion>", lambda e, w=which: self.on_motion(w, e))
-        self.root.bind("<MouseWheel>", self.on_wheel)
+        self.canvas.bind("<ButtonRelease-1>", self.on_click)
+        self.canvas.bind("<Motion>", self.on_motion)
+        self.canvas.bind("<Configure>", self.on_resize)
         self.root.bind("<Return>", lambda e: self.act("enter"))
         self.root.bind("<Escape>", lambda e: self.act("escape"))
         for v in mo.FEEL_WORDS:
             self.root.bind(str(v), lambda e, v=v: self.act(f"feel:{v}"))
-        self._last_h = 0
-        self.root.bind("<Configure>", self.on_resize)
+        self._size = (0, 0)
+        self._pending = None
         self.root.after(100, self.pump)
-        if book:
+        if report:
+            self.show_report()
+        elif book:
             self.show_book()
         else:
             self.show_start()
 
     # ------------------------------------------------------------------ drawing and input
 
-    def screen(self, name: str, draw_fn, footer_fn, actions: dict) -> None:
-        """Put a screen up: draw_fn(page) draws the page and returns its height, footer_fn(page) the buttons."""
-        self.view, self.draw_fn, self.footer_fn, self.actions = name, draw_fn, footer_fn, actions
+    def screen(self, name: str, tab, draw_fn, footer_fn, actions: dict) -> None:
+        """Put a screen up. draw_fn(page) draws the content (design y < FOOT), footer_fn(page) the buttons."""
+        self.view, self.tab, self.draw_fn, self.footer_fn = name, tab, draw_fn, footer_fn
+        self.actions = dict(actions)
+        if tab is not None and not self.riding:
+            self.actions.update({"tab:ride": self.show_start, "tab:book": self.show_book,
+                                 "tab:report": self.show_report})
         self.notice = ""
-        self.canvas.yview_moveto(0)
         self.redraw()
+
+    def window_px(self) -> tuple[int, int]:
+        w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
+        return (w, h) if w >= 50 and h >= 50 else self.req_size  # not on screen yet: the size we asked for
+
+    def render(self, pw: int, ph: int):
+        """The current screen as a pw x ph image (also used by tests to try any window size or DPI)."""
+        t = self.t
+        page = t.Page.fit(pw, ph, DW, DH)
+        if self.tab is not None:
+            self.draw_tabs(page)
+        self.draw_fn(page)
+        page.zone, page.oy = "footer", page.slack  # buttons stay at the bottom edge of a tall window
+        page.band(FOOT, t.BOTTOM, t.mix(t.BOTTOM, (0, 0, 0), 0.25))
+        if self.footer_fn:
+            self.footer_fn(page)
+        if self.notice:
+            page.text(DW / 2, DH - 12, page.fit_text(self.notice, DW - 2 * M, 12), 12, "SemiLight", t.FAINT,
+                      anchor="mm")
+        return page
 
     def redraw(self) -> None:
         from PIL import ImageTk
 
-        t = self.t
-        view_h = max(400, self.canvas.winfo_height() if self.canvas.winfo_height() > 1 else 820 - FOOTER_H)
-        page = t.Page(W, 2400, span=view_h)
-        h = int(max(view_h, min(2400, self.draw_fn(page) + 30)))
-        img = page.finish().crop((0, 0, W, h))
-        self.regions, self.texts = page.regions, page.texts
-        self._page_img = ImageTk.PhotoImage(img)
+        pw, ph = self.window_px()
+        page = self.render(pw, ph)
+        self.page, self.regions, self.texts = page, page.regions, page.texts
+        self._img = ImageTk.PhotoImage(page.finish())
         self.canvas.delete("all")
-        self.canvas.create_image(0, 0, image=self._page_img, anchor="nw")
-        self.canvas.configure(scrollregion=(0, 0, W, h))
-        foot = t.Page(W, FOOTER_H, background=t.gradient(W, FOOTER_H, t.BOTTOM, t.mix(t.BOTTOM, (0, 0, 0), 0.25)))
-        foot.line([(0, 0.5), (W, 0.5)], fill=(255, 255, 255, 28), width=1)
-        if self.footer_fn:
-            self.footer_fn(foot)
-        if self.notice:
-            foot.text(W / 2, FOOTER_H - 12, self.notice, 12, "SemiLight", t.FAINT, anchor="mm")
-        self.footer_regions = foot.regions
-        self.texts = self.texts + foot.texts
-        self._foot_img = ImageTk.PhotoImage(foot.finish())
-        self.footer.delete("all")
-        self.footer.create_image(0, 0, image=self._foot_img, anchor="nw")
+        self.canvas.create_image(0, 0, image=self._img, anchor="nw")
 
-    def _hit(self, where: str, e):
-        if where == "page":
-            x, y, regions = e.x, self.canvas.canvasy(e.y), self.regions
-        else:
-            x, y, regions = e.x, e.y, self.footer_regions
-        for key, (x0, y0, x1, y1) in reversed(regions):
-            if x0 <= x <= x1 and y0 <= y <= y1:
-                return key
-        return None
+    def _hit(self, e):
+        return self.page.hit(e.x, e.y) if self.page else None
 
-    def on_click(self, where: str, e) -> None:
-        key = self._hit(where, e)
+    def on_click(self, e) -> None:
+        key = self._hit(e)
         if key:
             self.act(key)
 
-    def on_motion(self, where: str, e) -> None:
-        widget = self.canvas if where == "page" else self.footer
-        widget.configure(cursor="hand2" if self._hit(where, e) else "")
-
-    def on_wheel(self, e) -> None:
-        top, bottom = self.canvas.yview()
-        if bottom - top < 1.0:
-            self.canvas.yview_scroll(int(-e.delta / 120) * 3, "units")
+    def on_motion(self, e) -> None:
+        self.canvas.configure(cursor="hand2" if self._hit(e) else "")
 
     def on_resize(self, e) -> None:
-        if e.widget is self.root and e.height != self._last_h and self.draw_fn:
-            self._last_h = e.height
-            self.root.after_idle(self.redraw)
+        if (e.width, e.height) != self._size and self.draw_fn:
+            self._size = (e.width, e.height)
+            if self._pending:
+                self.root.after_cancel(self._pending)
+            self._pending = self.root.after(60, self.redraw)  # once the drag settles
 
     def act(self, key: str) -> None:
         fn = self.actions.get(key)
-        if fn is None and key.startswith("feel:"):
-            return
         if fn is not None:
             fn()
 
     def click(self, key: str) -> None:
         """For tests: press a button by its key (it must be on screen)."""
-        keys = {k for k, _ in self.regions + self.footer_regions}
+        keys = {k for k, _ in self.regions}
         if key not in keys:
             raise KeyError(f"{key!r} is not on the {self.view} screen: {sorted(keys)}")
         self.act(key)
 
-    def header(self, pg, left: str, right: str = "slow roads + kickr") -> None:
-        pg.caps(M, 40, left, 14)
-        pg.caps(W - M, 40, right, 14, self.t.FAINT, anchor="r")
+    def draw_tabs(self, pg) -> None:
+        """RIDE · RIDES · REPORT at the top right; the lit one white with a blue line under it."""
+        t, x = self.t, DW - M
+        for key, label in reversed(TABS):
+            w = pg.caps_width(label, 13)
+            on = key == self.tab
+            pg.caps(x, 34, label, 13, t.WHITE if on else t.FAINT, anchor="r")
+            if on:
+                pg.rect((x - w, 56, x, 58), fill=t.BLUE, radius=1)
+            pg.region(f"tab:{key}", (x - w - 10, 22, x + 10, 64))
+            x -= w + 34
+
+    def header(self, pg, left: str) -> None:
+        room = DW - 2 * M - (300 if self.tab is not None else 0)  # leave the tabs their space
+        while len(left) > 4 and pg.caps_width(left, 13) > room:
+            left = left[:-2].rstrip(" ·") + "…"
+        pg.caps(M, 34, left, 13)
 
     # ------------------------------------------------------------------ start
 
@@ -210,63 +241,56 @@ class RideApp:
         if wanted == "suggested":
             wanted = key
         self.workout = wanted if wanted in options else None
+        back = coach.comeback()
+        plan = mo.plan_line(coach.plan(), coach.today)
 
         def draw(pg):
-            self.header(pg, f"ride  ·  {coach.today:%A %d %B}")
+            self.header(pg, f"{coach.today:%A %d %B}")
             w, life = coach.week(0), coach.lifetime()
             x = M
             for value, label in ((f"{w['rides']}/{coach.weekly_rides}", "rides this week"),
                                  (f"{w['minutes']:.0f}/{coach.weekly_minutes}", "minutes"),
                                  (str(coach.streak_weeks()), "week streak"),
                                  (f"{life['miles']:.1f}", "lifetime miles")):
-                x += pg.stat(x, 80, value, label, 56) + 60
-            y = 196
-            back = coach.comeback()
-            if back:
-                y = pg.wrap(M, y, f"Welcome back after {back} days: any ride this week keeps your streak going.",
-                            W - 2 * M, 18, fill=t.GOLD) + 8
-            pg.caps(M, y, "today", 13)
-            pg.text(M, y + 26, title_of(key, coach), 26, "Light")
-            y = pg.wrap(M, y + 66, why[:1].upper() + why[1:] + ".", W - 2 * M, 17, fill=t.MUTED)
-            plan = mo.plan_line(coach.plan(), coach.today)
-            if plan:
-                y = pg.wrap(M, y + 2, plan[:1].upper() + plan[1:], W - 2 * M, 15, fill=t.FAINT)
-
-            y += 22
-            pg.caps(M, y, "choose a ride", 13)
-            y += 26
-            col_w, gap = (W - 2 * M - 16) / 2, 16
+                x += pg.stat(x, 70, value, label, 48) + 56
+            pg.caps(M, 160, "today", 12)
+            pg.text(M, 180, title_of(key, coach), 24, "Light")
+            pg.text(M, 214, pg.fit_text(why[:1].upper() + why[1:], DW - 2 * M, 16), 16, "SemiLight", t.MUTED)
+            extra = (f"Welcome back after {back} days: any ride this week keeps your streak going." if back
+                     else plan[:1].upper() + plan[1:] if plan else "")
+            if extra:  # one optional line: welcome back first, else your ride plan
+                pg.text(M, 238, pg.fit_text(extra, DW - 2 * M, 15), 15, "SemiLight", t.GOLD if back else t.FAINT)
+            pg.caps(M, 272, "choose a ride", 12)
+            col_w, gap = (DW - 2 * M - 16) / 2, 16
             for i, k in enumerate(options):
-                bx, by = M + (i % 2) * (col_w + gap), y + (i // 2) * 58
+                bx, by = M + (i % 2) * (col_w + gap), 294 + (i // 2) * 50
                 label = "Free ride" if k is None else title_of(k, coach)
-                pg.pill(f"ride:{k}", (bx, by, bx + col_w, by + 46), label + ("   ·   suggested" if k == key else ""),
-                        "on" if k == self.workout else "ghost", size=17)
-            y += ((len(options) + 1) // 2) * 58 + 18
-            pg.caps(M, y, "road feel", 13)
-            y += 26
+                pg.pill(f"ride:{k}", (bx, by, bx + col_w, by + 40), label + ("   ·   suggested" if k == key else ""),
+                        "on" if k == self.workout else "ghost", size=16)
+            y = 294 + ((len(options) + 1) // 2) * 50 + 8
+            pg.caps(M, y, "road feel", 12)
             auto = f"Auto · {self.detected_road}" if self.detected_road else "Auto"
             x = M
             for value, label in ((None, auto), (True, "Gravel"), (False, "Tarmac")):
-                bw = max(130, pg.width(label, 17) + 50)
-                pg.pill(f"road:{value}", (x, y, x + bw, y + 42), label, "on" if self.gravel is value else "ghost")
+                bw = max(120, pg.width(label, 16) + 48)
+                pg.pill(f"road:{value}", (x, y + 22, x + bw, y + 60), label, "on" if self.gravel is value else "ghost",
+                        size=16)
                 x += bw + 12
-            y += 42 + 34
+            y += 84
             if coach.rides:
-                pg.journey(M, y, W - 2 * M, mo.journey(life["miles"]), compact=True)
-                y += 92
-            pg.caps(M, y, coach.challenge_text(), 12, t.FAINT)
-            return y + 20
+                pg.journey(M, y, DW - 2 * M, mo.journey(life["miles"]), size=20)
 
         def footer(pg):
-            pg.pill("begin", (W / 2 - 120, 18, W / 2 + 120, 72), "Begin", "primary", size=20)
-            pg.pill("book", (M, 26, M + 150, 64), "Ride book", size=16)
-            pg.caps(W - M, 38, "enter = begin", 11, t.FAINT, anchor="r")
-            pg.caps(W - M, 56, "f6/f7 gear · f8 pause · f10 overlay", 11, t.FAINT, anchor="r")
+            pg.pill("begin", (DW / 2 - 115, FOOT + 22, DW / 2 + 115, FOOT + 70), "Begin", "primary", size=20)
+            pg.caps(M, FOOT + 34, pg.fit_text(coach.challenge_text().upper(), 230, 11), 11, t.FAINT, tracking=2)
+            pg.caps(M, FOOT + 52, "enter = begin", 11, t.FAINT)
+            pg.caps(DW - M, FOOT + 34, "in the game", 11, t.FAINT, anchor="r")
+            pg.caps(DW - M, FOOT + 52, "f6/f7 gear · f8 pause · f10 overlay", 11, t.FAINT, anchor="r")
 
         actions = {f"ride:{k}": (lambda k=k: self.choose(k)) for k in options}
         actions.update({f"road:{v}": (lambda v=v: self.set_road(v)) for v in (None, True, False)})
-        actions.update({"begin": self.begin, "enter": self.begin, "book": self.show_book})
-        self.screen("start", draw, footer, actions)
+        actions.update({"begin": self.begin, "enter": self.begin})
+        self.screen("start", "ride", draw, footer, actions)
 
     def choose(self, key) -> None:
         self.workout = key
@@ -277,9 +301,6 @@ class RideApp:
         self.gravel = value
         if self.view == "start":
             self.redraw()
-
-    def toggle_road(self) -> None:
-        self.set_road(True if self.gravel is None else (False if self.gravel else None))
 
     def _road_text(self) -> str:
         if self.gravel is None:
@@ -368,39 +389,39 @@ class RideApp:
         def draw(pg):
             self.header(pg, f"riding  ·  {what}  ·  road {self._road_text()}")
             title, hint = self.riding_state()
-            pg.text(M, 84, title, 40, "Light")
+            pg.text(M, 76, title, 38, "Light")
             if hint:
-                pg.text(M, 138, hint, 17, "SemiLight", t.MUTED)
+                pg.text(M, 128, pg.fit_text(hint, DW - 2 * M, 16), 16, "SemiLight", t.MUTED)
             s = self.last_status
-            miles = (s.get("miles") or 0.0) * (1.609344 if s.get("units") == "km/h" else 1)
+            miles = (s.get("miles") or 0.0) * (KM_PER_MILE if s.get("units") == "km/h" else 1)
             x = M
-            for value, label in ((t.hms(s.get("ride_s") or 0), "time"), (f"{miles:.2f}", "miles"),
+            for value, label in ((hms(s.get("ride_s") or 0), "time"), (f"{miles:.2f}", "miles"),
                                  ("--" if s.get("power") is None else f"{s['power']:.0f}", "watts"),
                                  ("--" if s.get("cadence") is None else f"{s['cadence']:.0f}", "rpm")):
-                x += pg.stat(x, 196, value, label, 72) + 70
-            y = 330
+                x += pg.stat(x, 186, value, label, 68) + 64
+            y = 316
             wk = s.get("workout")
             if wk:
-                pg.panel((M, y, W - M, y + 96))
-                pg.caps(M + 24, y + 20, f"{wk.get('block', '')}  ·  block {wk.get('index', '?')} of "
+                pg.panel((M, y, DW - M, y + 92))
+                pg.caps(M + 24, y + 18, f"{wk.get('block', '')}  ·  block {wk.get('index', '?')} of "
                                         f"{wk.get('count', '?')}", 12)
                 left = wk.get("left")
-                pg.text(M + 24, y + 44, f"{t.hms(left)} left" if left is not None else "", 28, "Light")
+                pg.text(M + 24, y + 42, f"{hms(left)} left" if left is not None else "", 28, "Light")
                 target = wk.get("target")
-                pg.text(W - M - 24, y + 44, f"{target[0]:.0f}–{target[1]:.0f} W" if target
+                pg.text(DW - M - 24, y + 42, f"{target[0]:.0f}–{target[1]:.0f} W" if target
                         else "stand, stretch & drink", 28, "Light", t.GOLD, anchor="ra")
-                y += 120
+                y += 116
             if self.msg_text:
-                pg.wrap(M, y + 6, self.msg_text[:1] + self.msg_text[1:].lower(), W - 2 * M, 22, fill=t.GOLD)
-            return y + 80
+                pg.wrap(M, y + 6, self.msg_text[:1] + self.msg_text[1:].lower(), DW - 2 * M, 22, fill=t.GOLD,
+                        max_lines=2)
 
         def footer(pg):
             label = "Finishing…" if self.stop.is_set() else "End ride"
-            pg.pill("end", (W / 2 - 110, 20, W / 2 + 110, 70), label, size=18)
-            pg.caps(M, 40, "this window hides while you ride", 11, t.FAINT)
-            pg.caps(M, 58, "and comes back with your summary", 11, t.FAINT)
+            pg.pill("end", (DW / 2 - 110, FOOT + 22, DW / 2 + 110, FOOT + 70), label, size=18)
+            pg.caps(M, FOOT + 34, "this window hides while you ride", 11, t.FAINT)
+            pg.caps(M, FOOT + 52, "and comes back with your summary", 11, t.FAINT)
 
-        self.screen("riding", draw, footer, {"end": self.end_ride})
+        self.screen("riding", None, draw, footer, {"end": self.end_ride})
 
     def end_ride(self) -> None:
         if self.riding and not self.stop.is_set():
@@ -412,7 +433,7 @@ class RideApp:
         self.last_status = s
         if self.msg_text and time.monotonic() - self.message_at > 12:
             self.msg_text = None
-        if self.view == "riding":
+        if self.view == "riding" and self.root.state() != "iconic":
             self.redraw()
         # hide once the game has the screen; the ride runs on without the window (a dry run has no game)
         if s.get("focused") and s.get("connected") and not self.minimized_for_game and not self.args.dry_run:
@@ -421,7 +442,7 @@ class RideApp:
 
     def on_message(self, text: str) -> None:
         self.msg_text, self.message_at = text, time.monotonic()
-        if self.view == "riding":
+        if self.view == "riding" and self.root.state() != "iconic":
             self.redraw()
 
     def bring_back(self) -> None:
@@ -452,16 +473,15 @@ class RideApp:
 
         def draw(pg):
             self.header(pg, header)
-            pg.text(M, 84, title, 40, "Light")
-            y = pg.wrap(M, 150, text, W - 2 * M, 19, fill=t.GOLD if header == "stopped" else t.MUTED)
+            pg.text(M, 76, title, 38, "Light")
+            y = pg.wrap(M, 140, text, DW - 2 * M, 18, fill=t.GOLD if header == "stopped" else t.MUTED, max_lines=8)
             if extra:
-                y = pg.wrap(M, y + 14, extra, W - 2 * M, 15, fill=t.FAINT)
-            return y
+                pg.wrap(M, y + 14, extra, DW - 2 * M, 14, fill=t.FAINT, max_lines=10)
 
         def footer(pg):
-            pg.pill("back", (W / 2 - 110, 20, W / 2 + 110, 70), button, "primary", size=19)
+            pg.pill("back", (DW / 2 - 110, FOOT + 22, DW / 2 + 110, FOOT + 70), button, "primary", size=19)
 
-        self.screen("message", draw, footer, {"back": self.show_start, "enter": self.show_start})
+        self.screen("message", "ride", draw, footer, {"back": self.show_start, "enter": self.show_start})
 
     def on_error(self, exc, path) -> None:
         from .crashreport import ISSUES_URL, redact
@@ -473,7 +493,8 @@ class RideApp:
             return
         where = f"A crash report was saved to {path}." if path else "The crash report could not be saved."
         self.show_message("stopped", "Something went wrong", redact(str(exc))[:300] or type(exc).__name__,
-                          f"{where} Double-click report.bat and attach the zip to a new issue: {ISSUES_URL}")
+                          f"{where} The Report tab bundles it with your recent logs; attach the zip to a new "
+                          f"issue: {ISSUES_URL}")
 
     def on_ui_error(self, exc_type, exc, tb) -> None:
         from .crashreport import write_report
@@ -498,6 +519,10 @@ class RideApp:
                     self.on_finished(data)
                 elif kind == "error":
                     self.on_error(*data)
+                elif kind == "report":
+                    self.report_state = data
+                    if self.view == "report":
+                        self.redraw()
         except queue.Empty:
             pass
         self.root.after(150, self.pump)
@@ -509,7 +534,15 @@ class RideApp:
 
         coach = self.coach = self.load_coach()
         if not coach.rides:
-            self.show_message("ride book", "No rides yet", "Your first ride starts the book.", button="Ride")
+            def draw(pg):
+                self.header(pg, "ride book")
+                pg.text(M, 76, "No rides yet", 38, "Light")
+                pg.text(M, 140, "Your first ride starts the book.", 18, "SemiLight", self.t.MUTED)
+
+            def footer(pg):
+                pg.pill("go", (DW / 2 - 110, FOOT + 22, DW / 2 + 110, FOOT + 70), "Ride", "primary", size=19)
+
+            self.screen("book", "book", draw, footer, {"go": self.show_start, "enter": self.show_start})
             return
         ride = coach.rides[-1]
         summary = None
@@ -538,7 +571,7 @@ class RideApp:
             except Exception:
                 pass
         notes += [text for _, text in coach.focus_areas()[:2]]
-        nkey, nwhy = coach.suggest()
+        nkey = coach.suggest()[0]
         ask_feel = post_ride and ride.moving_s >= 300 and self.args.feel
         self.feel_value = mo.load_book(Path(self.args.log_dir)).get("feel", {}).get(ride.stamp)
 
@@ -553,67 +586,67 @@ class RideApp:
         self.pick_feel = pick
 
         def draw(pg):
-            self.header(pg, f"{'ride done' if post_ride else 'ride book'}  ·  {ride.when:%A %d %B %Y}  ·  {what}")
+            self.header(pg, f"{'ride done' if post_ride else 'latest ride'}  ·  {ride.when:%a %d %b}  ·  {what}")
             x = M
-            for value, label in ((t.hms(ride.moving_s), "moving"), (f"{ride.miles:.2f}", "miles"),
+            for value, label in ((hms(ride.moving_s), "moving"), (f"{ride.miles:.2f}", "miles"),
                                  (f"{ride.avg_w:.0f}", "avg watts"), (f"{ride.work_kj:.0f}", "kj")):
-                x += pg.stat(x, 78, value, label, 68) + 64
+                x += pg.stat(x, 66, value, label, 56) + 58
             x = M
             row2 = [(f"{ride.np_w:.0f}" if ride.np_w else "--", "np watts"), (f"{ride.avg_cad:.0f}", "cadence")]
             row2 += [(f"{ride.curve[d]:.0f}", f"best {lab}") for d, lab in ((60, "1 min"), (300, "5 min"),
                                                                              (1200, "20 min")) if d in ride.curve]
             for value, label in row2:
-                x += pg.stat(x, 200, value, label, 36) + 54
-            y = 282
-            if ramp_ftp:
-                pg.text(M, y, f"Ramp test: FTP {ramp_ftp} W, saved", 22, "Light", t.GOLD)
-                y += 36
-            if recs:
-                y = pg.wrap(M, y, "New: " + "; ".join(recs), W - 2 * M, 20, fill=t.GOLD) + 4
+                x += pg.stat(x, 160, value, label, 30) + 48
+            news = ([f"Ramp test: FTP {ramp_ftp} W, saved"] if ramp_ftp else []) + (["New: " + "; ".join(recs)]
+                                                                                    if recs else [])
+            if news:
+                pg.text(M, 222, pg.fit_text("  ·  ".join(news), DW - 2 * M, 17), 17, "SemiLight", t.GOLD)
+            y = 256
             if ask_feel:
-                y += 14
-                pg.caps(M, y, "how did it feel?", 13)
-                y += 26
+                pg.caps(M, y, "how did it feel?", 12)
                 bx = M
                 for v, word in mo.FEEL_WORDS.items():
                     label = f"{v}  {word}"
-                    bw = pg.width(label, 16) + 44
-                    pg.pill(f"feel:{v}", (bx, y, bx + bw, y + 40), label, "on" if self.feel_value == v else "ghost",
-                            size=16)
+                    bw = pg.width(label, 15) + 40
+                    pg.pill(f"feel:{v}", (bx, y + 20, bx + bw, y + 56), label, "on" if self.feel_value == v else "ghost",
+                            size=15)
                     bx += bw + 10
-                y += 40
-            y += 26
-            half = (W - 2 * M - 20) / 2
+                y += 74
+            ch = 512 - y if not ask_feel else 190     # the charts take what's left above the notes
+            half = (DW - 2 * M - 20) / 2
             best = {d: w for d, (w, _) in coach.records()["curve"].items()}
-            pg.curve_chart((M, y, M + half, y + 236), ride.curve, best, DURATIONS, duration_label)
+            pg.curve_chart((M, y, M + half, y + ch), ride.curve, best, DURATIONS, duration_label)
             weeks = [coach.week(i) for i in range(11, -1, -1)]
-            pg.weeks_chart((M + half + 20, y, W - M, y + 236), weeks, coach.weekly_minutes, coach.goal_met)
-            y += 236 + 32
-            life = coach.lifetime()
-            pg.journey(M, y, W - 2 * M, mo.journey(life["miles"]), compact=True)
-            y += 104
-            pg.caps(M, y, "next time", 13)
-            y += 28
-            for n in notes[:4]:
-                pg.dot(M + 4, y + 11, 2.5, t.MUTED)
-                y = pg.wrap(M + 18, y, n, W - 2 * M - 18, 17) + 4
-            y = pg.wrap(M, y + 6, f"Next ride: {title_of(nkey, coach)}, {nwhy}.", W - 2 * M, 17, fill=t.GOLD)
-            w = coach.week(0)
-            pg.caps(M, y + 16, f"{life['rides']} rides  ·  this week {w['rides']}/{coach.weekly_rides}  ·  "
-                               f"streak {coach.streak_weeks()} wk  ·  {coach.challenge_text()}", 11, t.FAINT)
-            return y + 40
+            pg.weeks_chart((M + half + 20, y, DW - M, y + ch), weeks, coach.weekly_minutes, coach.goal_met)
+            y += ch + 22
+            # bottom: notes on the left, journey and totals on the right
+            lw = half
+            pg.caps(M, y, "next time", 12)
+            ny = y + 22
+            for n in notes[:2]:
+                pg.dot(M + 3, ny + 9, 2.2, t.MUTED)
+                ny = pg.wrap(M + 14, ny, n, lw - 14, 14, max_lines=2, line=1.35) + 4
+            pg.text(M, ny + 2, pg.fit_text(f"Next ride: {title_of(nkey, coach)}", lw, 15), 15, "SemiLight", t.GOLD)
+            rx = M + half + 20
+            life, w = coach.lifetime(), coach.week(0)
+            pg.journey(rx, y - 2, DW - M - rx, mo.journey(life["miles"]), size=18)
+            pg.caps(rx, y + 84, pg.fit_text(f"{life['rides']} rides  ·  week {w['rides']}/{coach.weekly_rides}  ·  "
+                                            f"streak {coach.streak_weeks()} wk".upper(), DW - M - rx, 11), 11,
+                    t.FAINT, tracking=2)
+            pg.caps(rx, y + 102, pg.fit_text(coach.challenge_text().upper(), DW - M - rx, 11), 11, t.FAINT,
+                    tracking=2)
 
         def footer(pg):
-            pg.pill("again", (W / 2 - 260, 20, W / 2 - 50, 70), "Ride again" if post_ride else "Ride", "primary",
-                    size=19)
-            pg.pill("picture", (W / 2 - 30, 20, W / 2 + 140, 70), "Save picture", size=17)
-            pg.pill("close", (W / 2 + 160, 20, W / 2 + 280, 70), "Close", size=17)
+            pg.pill("again", (DW / 2 - 260, FOOT + 22, DW / 2 - 50, FOOT + 70), "Ride again" if post_ride else "Ride",
+                    "primary", size=19)
+            pg.pill("picture", (DW / 2 - 30, FOOT + 22, DW / 2 + 140, FOOT + 70), "Save picture", size=17)
+            pg.pill("close", (DW / 2 + 160, FOOT + 22, DW / 2 + 280, FOOT + 70), "Close", size=17)
 
         actions = {"again": self.show_start, "enter": self.show_start, "close": self.on_close,
                    "picture": lambda: self.save_picture(ride)}
         if ask_feel:
             actions.update({f"feel:{v}": (lambda v=v: pick(v)) for v in mo.FEEL_WORDS})
-        self.screen("summary" if post_ride else "book", draw, footer, actions)
+        self.screen("summary" if post_ride else "book", "ride" if post_ride else "book", draw, footer, actions)
 
     def save_picture(self, ride) -> None:
         try:
@@ -629,6 +662,89 @@ class RideApp:
         except Exception as e:
             self.notice = f"couldn't save the picture: {type(e).__name__}"
         self.redraw()
+
+    # ------------------------------------------------------------------ report
+
+    def show_report(self) -> None:
+        """Bundle crash reports and recent logs (personal details removed) into one zip for a GitHub issue."""
+        from .crashreport import ISSUES_URL
+
+        t = self.t
+        log_dir = Path(self.args.log_dir)
+        crashes = sorted(log_dir.glob("crash-*.txt"))
+        rides = sorted(log_dir.glob("bridge-*.log"))
+
+        def draw(pg):
+            self.header(pg, "problem report")
+            st = self.report_state
+            pg.text(M, 76, "Report a problem", 38, "Light")
+            y = pg.wrap(M, 140, "Bundles your recent crash reports, logs and latest ride data into one zip, with "
+                                "personal details removed: Bluetooth addresses, user and computer names, home "
+                                "folder and e-mail addresses. No screenshots, game settings or settings.json.",
+                        DW - 2 * M, 17, fill=t.MUTED, max_lines=4)
+            x = M
+            for value, label in ((str(len(crashes)), "crash reports"), (str(len(rides)), "ride logs")):
+                x += pg.stat(x, y + 24, value, label, 48) + 70
+            y += 120
+            if crashes:
+                pg.text(M, y, pg.fit_text(f"Latest crash report: {crashes[-1].name}", DW - 2 * M, 15), 15,
+                        "SemiLight", t.FAINT)
+                y += 30
+            if st.get("busy"):
+                pg.text(M, y + 10, "Making the report…", 24, "Light", t.WHITE)
+            elif st.get("path"):
+                pg.text(M, y + 10, "Report saved", 24, "Light", t.GOLD)
+                y = pg.wrap(M, y + 48, str(st["path"]), DW - 2 * M, 15, fill=t.MUTED, max_lines=2)
+                pg.wrap(M, y + 10, f"Attach it to a new issue: {ISSUES_URL}", DW - 2 * M, 15, fill=t.FAINT,
+                        max_lines=2)
+            elif st.get("error"):
+                pg.wrap(M, y + 10, f"Couldn't make the report: {st['error']}", DW - 2 * M, 17, fill=t.GOLD,
+                        max_lines=3)
+
+        def footer(pg):
+            st = self.report_state
+            if st.get("path"):
+                pg.pill("folder", (DW / 2 - 250, FOOT + 22, DW / 2 - 20, FOOT + 70), "Show in folder", "primary",
+                        size=18)
+                pg.pill("issue", (DW / 2, FOOT + 22, DW / 2 + 250, FOOT + 70), "Open a GitHub issue", size=17)
+            else:
+                pg.pill("make", (DW / 2 - 120, FOOT + 22, DW / 2 + 120, FOOT + 70),
+                        "Working…" if st.get("busy") else "Make report", "primary", size=19)
+
+        self.report_state = {}
+        actions = {"make": self.make_report, "enter": self.make_report, "folder": self.show_report_file,
+                   "issue": lambda: self._open(ISSUES_URL)}
+        self.screen("report", "report", draw, footer, actions)
+
+    def make_report(self) -> None:
+        if self.report_state.get("busy") or self.riding:
+            return
+        self.report_state = {"busy": True}
+        self.redraw()
+
+        events, log_dir = self.events, Path(self.args.log_dir)  # the worker never touches the window
+
+        def work():
+            try:
+                from .report import build_report
+
+                events.put(("report", {"path": build_report(log_dir)}))
+            except Exception as e:  # noqa: BLE001
+                events.put(("report", {"error": f"{type(e).__name__}: {e}"}))
+
+        threading.Thread(target=work, name="report", daemon=True).start()
+
+    def show_report_file(self) -> None:
+        path = self.report_state.get("path")
+        if path and sys.platform == "win32":
+            subprocess.Popen(["explorer", "/select,", str(path)])
+
+    @staticmethod
+    def _open(target: str) -> None:
+        if sys.platform == "win32":
+            import os
+
+            os.startfile(target)
 
     # ------------------------------------------------------------------ closing
 
@@ -662,8 +778,8 @@ def main(argv=None) -> int:
     from .__main__ import parse_args
 
     argv = list(sys.argv[1:] if argv is None else argv)
-    book = "--book" in argv
-    argv = [a for a in argv if a != "--book"]
+    book, report = "--book" in argv, "--report" in argv
+    argv = [a for a in argv if a not in ("--book", "--report")]
     args = parse_args(argv)
     if sys.platform == "win32":
         try:  # own taskbar entry and icon instead of Python's
@@ -676,7 +792,7 @@ def main(argv=None) -> int:
             ctypes.windll.user32.MessageBoxW(None, "Slow Roads Ride is already open.", "Slow Roads Ride", 0x40)
         return 1
     try:
-        app = RideApp(args, book=book)
+        app = RideApp(args, book=book, report=report)
     except ImportError:
         if sys.platform == "win32":
             ctypes.windll.user32.MessageBoxW(None, "The ride window needs Pillow. Run scripts\\setup.ps1 again.",

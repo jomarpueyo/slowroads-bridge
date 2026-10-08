@@ -9,8 +9,10 @@ labels: bug
 A sentence or two: what you did, what you expected, what happened instead.
 
 **Problem report**
-Double-click `report.bat` in the project folder. It creates `logs\report-<date>.zip` with recent crash
-reports and logs (Bluetooth addresses, user and computer names are removed). Attach that zip here.
+In the Slow Roads Ride window, open the **Report** tab and press **Make report** (or double-click
+`report.bat` in the project folder if the window won't start). It creates `logs\report-<date>.zip` with
+recent crash reports and logs (Bluetooth addresses, user and computer names are removed). Attach that zip
+here.
 
 **Setup**
 - Trainer (model and firmware if known):

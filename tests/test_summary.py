@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bridge.summary import format_summary, summarize_csv, summarize_rows, write_summary  # noqa: E402
+from bridge.summary import format_summary, save_summary, summarize_csv, summarize_rows  # noqa: E402
 
 
 def rows(seconds, power=200, cadence=90, speed=30.0, start=0.0):
@@ -97,23 +97,23 @@ def test_fuzzed_rows_never_crash():
         format_summary(summarize_rows(data))
 
 
-def test_write_summary_from_csv(tmp_path):
+def test_save_summary_from_csv(tmp_path):
     csv_path = tmp_path / "ride-20260101-000000.csv"
     lines = ["t_s,wall_time,power_w,cadence_rpm,speed_kmh,smoothed_w,throttle,flags,raw_hex,error"]
     lines += [f"{i},x,150,85,28.0,150,0.6,0x0044,00,"for i in range(90)]
     lines += ["90,x,,,,,,,00,too short", "91,broken"]
     csv_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    text, out = write_summary(csv_path)
+    text = format_summary(summarize_csv(csv_path))
+    out = save_summary(csv_path, text)
     assert out == tmp_path / "summary-20260101-000000.txt" and out.read_text(encoding="utf-8").strip() == text
     assert "avg 150 W" in text and "(1 bad)" in text
     assert summarize_csv(csv_path).packets == 92
 
 
-def test_write_summary_on_binary_garbage(tmp_path):
+def test_summary_of_binary_garbage(tmp_path):
     csv_path = tmp_path / "ride-20260101-000001.csv"
     csv_path.write_bytes(bytes(random.Random(5).getrandbits(8) for _ in range(4000)))
-    text, _ = write_summary(csv_path)
-    assert "no trainer data" in text
+    assert "no trainer data" in format_summary(summarize_csv(csv_path))
 
 
 def test_distance_is_zwift_like_from_power():
