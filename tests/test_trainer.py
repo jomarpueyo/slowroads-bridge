@@ -160,6 +160,22 @@ def test_controller_skips_unsupported_modes_and_reconnects():
     _run(go())
 
 
+def test_no_warning_before_the_trainer_says_what_it_supports(caplog):
+    """Ride 2026-10-14: a step ran 0.1 s before attach() had read the features and warned 'doesn't support
+    simulation'; road feel then worked. Until the features are known, just wait."""
+    async def go():
+        kickr = FakeKickr()
+        c = tr.TrainerControl()
+        c.client = kickr                                           # connected, features not read yet
+        c.set_want(tr.Want("sim", crr=tr.TARMAC_CRR))
+        await c.step()
+        assert kickr.writes == [] and "doesn't support" not in caplog.text
+        await c.attach(kickr)
+        await c.step()
+        assert kickr.writes[-1] == tr.simulation()                 # applied once the trainer has answered
+    _run(go())
+
+
 def test_disabled_controller_never_touches_the_trainer():
     async def go():
         kickr = FakeKickr()

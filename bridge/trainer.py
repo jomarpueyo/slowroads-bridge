@@ -251,6 +251,8 @@ class TrainerControl:
         want = self.want
         if not self.enabled or self.client is None or want.mode == "none" or want == self.applied:
             return
+        if not self.features:  # still reading what the trainer supports (ride 2026-10-14 warned 0.1 s too early)
+            return
         needed = "power" if want.mode == "erg" else "simulation"
         if needed not in self.features:
             self._warn(needed, f"this trainer doesn't support {needed} targets; leaving it alone")
